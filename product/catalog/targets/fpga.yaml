@@ -1,0 +1,9 @@
+catalog_version: 1
+target: FPGA
+metrics_status: BLOCKED_EXTERNAL
+metrics: []
+health:
+  - subsystem: firmware_heartbeat
+    requirement: REQUIRED
+    evidence_contract: firmware_heartbeat
+    native_mapping: TBD_TDD08

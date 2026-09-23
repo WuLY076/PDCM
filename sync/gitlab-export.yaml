@@ -1,0 +1,16 @@
+version: 1
+
+# The exporter is allowlist based. product/ is self-contained and becomes the
+# root of the future internal GitLab repository.
+include:
+  - product/**
+
+optional:
+  - docs/RFC.md
+  - docs/TDDs/**
+
+exclude:
+  - testkit/**
+  - .github/**
+  - build/**
+  - build-*/**
