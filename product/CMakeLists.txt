@@ -22,7 +22,69 @@ option(PDCM_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSani
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(PdcmWarnings)
+include(GNUInstallDirs)
 
-# Production targets are added here as the implementation grows. This file is
-# deliberately self-contained so product/ can be exported as a standalone
-# repository without the GitHub-only testkit.
+add_library(
+  pdcm_common
+  STATIC
+    src/common/clock.cpp
+    src/common/observation.cpp
+    src/common/status.cpp
+)
+add_library(PDCM::common ALIAS pdcm_common)
+
+set_target_properties(pdcm_common PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(
+  pdcm_common
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+target_compile_features(pdcm_common PUBLIC cxx_std_17)
+pdcm_enable_warnings(pdcm_common)
+pdcm_enable_sanitizers(pdcm_common)
+
+add_library(pdcm_provider_contract INTERFACE)
+add_library(PDCM::provider_contract ALIAS pdcm_provider_contract)
+target_include_directories(
+  pdcm_provider_contract
+  INTERFACE
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+)
+target_link_libraries(pdcm_provider_contract INTERFACE pdcm_common)
+
+install(
+  DIRECTORY include/pdcm
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+  FILES_MATCHING PATTERN "*.h"
+)
+
+if(BUILD_TESTING)
+  add_executable(
+    pdcm_public_headers_c_test
+    tests/unit/public_headers_c_test.c
+  )
+  target_include_directories(
+    pdcm_public_headers_c_test
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  )
+  pdcm_enable_warnings(pdcm_public_headers_c_test)
+  add_test(NAME product.public_headers_c COMMAND pdcm_public_headers_c_test)
+
+  add_executable(
+    pdcm_foundation_test
+    tests/unit/foundation_test.cpp
+  )
+  target_include_directories(
+    pdcm_foundation_test
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  target_link_libraries(
+    pdcm_foundation_test
+    PRIVATE pdcm_common pdcm_provider_contract
+  )
+  pdcm_enable_warnings(pdcm_foundation_test)
+  pdcm_enable_sanitizers(pdcm_foundation_test)
+  add_test(NAME product.foundation COMMAND pdcm_foundation_test)
+endif()
