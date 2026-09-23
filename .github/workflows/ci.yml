@@ -9,6 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtest-dev ninja-build protobuf-compiler
       - name: Configure workspace
         run: cmake -S . -B build -G Ninja -DBUILD_TESTING=ON
       - name: Build workspace
@@ -20,7 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install boundary-check dependency
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Install build and boundary-check dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtest-dev ninja-build protobuf-compiler ripgrep
       - name: Verify standalone product tree
         run: tools/verify-sync-boundary.sh

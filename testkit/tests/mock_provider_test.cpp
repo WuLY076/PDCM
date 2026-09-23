@@ -1,44 +1,34 @@
 #include <chrono>
 #include <cstdint>
-#include <iostream>
 #include <memory>
-#include <string_view>
 #include <variant>
+
+#include <gtest/gtest.h>
 
 #include "pdcm/testkit/manual_clock.hpp"
 #include "pdcm/testkit/mock_metric_ids.hpp"
 #include "pdcm/testkit/mock_provider.hpp"
 
+namespace pdcm::testkit {
 namespace {
 
-int failures = 0;
-
-void check(const bool condition, const std::string_view message) {
-  if (!condition) {
-    std::cerr << "FAILED: " << message << '\n';
-    ++failures;
-  }
-}
-
-pdcm::ProviderInitOptions initOptions(const pdcm::testkit::ManualClock &clock) {
-  pdcm::ProviderInitOptions options;
-  options.target = pdcm::TargetKind::kFpga;
+ProviderInitOptions initOptions(const ManualClock &clock) {
+  ProviderInitOptions options;
+  options.target = TargetKind::kFpga;
   options.deadline = clock.monotonicNow() + std::chrono::seconds(1);
   return options;
 }
 
-pdcm::ProviderReadItem readItem(const pdcm::ProviderDataKind kind,
-                                const std::uint32_t id) {
-  pdcm::ProviderReadItem item;
-  item.entity =
-      pdcm::EntityRef{pdcm::EntityKind::kDevice, pdcm::EntityId{0}, 1};
+ProviderReadItem readItem(const ProviderDataKind kind, const std::uint32_t id) {
+  ProviderReadItem item;
+  item.entity = EntityRef{EntityKind::kDevice, EntityId{0}, 1};
   item.kind = kind;
   item.data_id = id;
   return item;
 }
 
-pdcm::ProviderReadRequest readRequest(const pdcm::testkit::ManualClock &clock) {
-  pdcm::ProviderReadRequest request;
+ProviderReadRequest readRequest(const ManualClock &clock) {
+  ProviderReadRequest request;
   request.request_id = 1;
   request.plan_generation = 1;
   request.catalog_generation = 1;
@@ -47,31 +37,20 @@ pdcm::ProviderReadRequest readRequest(const pdcm::testkit::ManualClock &clock) {
   return request;
 }
 
-} // namespace
-
-int main() {
-  using namespace pdcm;
-  using namespace pdcm::testkit;
-
+TEST(MockProviderTest, ProducesDeterministicSingleDeviceData) {
   auto clock = std::make_shared<ManualClock>(100, 1000);
+  MockProvider provider(MockProviderConfig{}, clock);
 
-  MockProvider single(MockProviderConfig{}, clock);
-  check(single.initialize(initOptions(*clock)).ok(),
-        "single-device provider initializes");
-  check(single.state() == ProviderState::kReady,
-        "initialized provider is ready");
-  check(single.concurrency().max_concurrency == 1,
-        "mock provider declares serialized calls");
+  ASSERT_TRUE(provider.initialize(initOptions(*clock)).ok());
+  EXPECT_EQ(provider.state(), ProviderState::kReady);
+  EXPECT_EQ(provider.concurrency().max_concurrency, 1);
 
   ProviderDiscoveryResult discovery =
-      single.discover(clock->monotonicNow() + std::chrono::seconds(1));
-  check(discovery.call_status.ok(), "single-device discovery succeeds");
-  check(discovery.descriptor.detected_device_count == 1,
-        "single-device discovery reports one device");
-  check(discovery.descriptor.entities.size() == 1,
-        "single-device descriptor has one entity");
-  check(discovery.descriptor.capabilities.size() == 4,
-        "mock capabilities are explicit");
+      provider.discover(clock->monotonicNow() + std::chrono::seconds(1));
+  ASSERT_TRUE(discovery.call_status.ok());
+  EXPECT_EQ(discovery.descriptor.detected_device_count, 1);
+  EXPECT_EQ(discovery.descriptor.entities.size(), 1);
+  EXPECT_EQ(discovery.descriptor.capabilities.size(), 4);
 
   ProviderReadRequest request = readRequest(*clock);
   request.items = {
@@ -79,99 +58,95 @@ int main() {
       readItem(ProviderDataKind::kMetric, kTestCounterMetricId),
       readItem(ProviderDataKind::kHeartbeatEvidence, kTestHeartbeatEvidenceId),
   };
-  ProviderReadResult first = single.batchRead(request);
-  check(first.call_status.ok(), "supported batch read succeeds");
-  check(first.items.size() == request.items.size(),
-        "batch result contains every requested item");
-  check(std::get<std::uint64_t>(*first.items[0].value) == 10,
-        "gauge value is deterministic");
-  check(std::get<std::uint64_t>(*first.items[1].value) == 100,
-        "counter value is deterministic");
-  check(std::get<std::uint64_t>(*first.items[2].value) == 0,
-        "normal heartbeat class is deterministic");
 
-  ProviderReadResult second = single.batchRead(request);
-  check(std::get<std::uint64_t>(*second.items[0].value) == 20,
-        "sample sequence advances once per batch");
+  ProviderReadResult first = provider.batchRead(request);
+  ASSERT_TRUE(first.call_status.ok());
+  ASSERT_EQ(first.items.size(), request.items.size());
+  EXPECT_EQ(std::get<std::uint64_t>(*first.items[0].value), 10);
+  EXPECT_EQ(std::get<std::uint64_t>(*first.items[1].value), 100);
+  EXPECT_EQ(std::get<std::uint64_t>(*first.items[2].value), 0);
 
-  MockProviderConfig partial_config;
-  partial_config.scenario = MockScenario::kPartialMetricFailure;
-  MockProvider partial(partial_config, clock);
-  check(partial.initialize(initOptions(*clock)).ok(),
-        "partial provider initializes");
+  ProviderReadResult second = provider.batchRead(request);
+  EXPECT_EQ(std::get<std::uint64_t>(*second.items[0].value), 20);
+}
 
-  ProviderReadRequest partial_request = readRequest(*clock);
-  partial_request.items = {
+TEST(MockProviderTest, PreservesPartialItemFailures) {
+  auto clock = std::make_shared<ManualClock>(100, 1000);
+  MockProviderConfig config;
+  config.scenario = MockScenario::kPartialMetricFailure;
+  MockProvider provider(config, clock);
+  ASSERT_TRUE(provider.initialize(initOptions(*clock)).ok());
+
+  ProviderReadRequest request = readRequest(*clock);
+  request.items = {
       readItem(ProviderDataKind::kMetric, kTestGaugeMetricId),
       readItem(ProviderDataKind::kMetric, kTestPeriodicFailureMetricId),
   };
-  ProviderReadResult partial_result = partial.batchRead(partial_request);
-  check(partial_result.call_status.code() == PDCM_STATUS_PARTIAL_RESULT,
-        "mixed item result reports partial");
-  check(partial_result.items[0].status == ObservationStatus::kValid,
-        "successful item is retained");
-  check(partial_result.items[1].status == ObservationStatus::kError,
-        "scripted failure remains item-level");
-  check(!partial_result.items[1].value.has_value(),
-        "failed item has no fabricated value");
+
+  ProviderReadResult result = provider.batchRead(request);
+  ASSERT_EQ(result.call_status.code(), PDCM_STATUS_PARTIAL_RESULT);
+  ASSERT_EQ(result.items.size(), 2);
+  EXPECT_EQ(result.items[0].status, ObservationStatus::kValid);
+  EXPECT_EQ(result.items[1].status, ObservationStatus::kError);
+  EXPECT_FALSE(result.items[1].value.has_value());
+}
+
+TEST(MockProviderTest, ExposesZeroAndMultipleDeviceFixtures) {
+  auto clock = std::make_shared<ManualClock>(100, 1000);
 
   MockProviderConfig zero_config;
   zero_config.scenario = MockScenario::kZeroDevice;
   MockProvider zero(zero_config, clock);
-  check(zero.initialize(initOptions(*clock)).ok(),
-        "zero-device provider initializes");
-  check(zero.discover(clock->monotonicNow() + std::chrono::seconds(1))
-                .descriptor.detected_device_count == 0,
-        "zero-device discovery is explicit");
+  ASSERT_TRUE(zero.initialize(initOptions(*clock)).ok());
+  EXPECT_EQ(zero.discover(clock->monotonicNow() + std::chrono::seconds(1))
+                .descriptor.detected_device_count,
+            0);
 
   MockProviderConfig multiple_config;
   multiple_config.scenario = MockScenario::kMultipleDevices;
   MockProvider multiple(multiple_config, clock);
-  check(multiple.initialize(initOptions(*clock)).ok(),
-        "multiple-device provider initializes");
-  ProviderDiscoveryResult multiple_result =
+  ASSERT_TRUE(multiple.initialize(initOptions(*clock)).ok());
+  ProviderDiscoveryResult result =
       multiple.discover(clock->monotonicNow() + std::chrono::seconds(1));
-  check(multiple_result.descriptor.detected_device_count == 2,
-        "multiple-device fixture exposes detected count");
-  check(multiple_result.descriptor.entities.size() == 2,
-        "provider does not silently discard the second device");
+  EXPECT_EQ(result.descriptor.detected_device_count, 2);
+  EXPECT_EQ(result.descriptor.entities.size(), 2);
+}
+
+TEST(MockProviderTest, ReportsUnavailableTimeoutAndShutdown) {
+  auto clock = std::make_shared<ManualClock>(100, 1000);
 
   MockProviderConfig unavailable_config;
   unavailable_config.scenario = MockScenario::kProviderUnavailable;
   MockProvider unavailable(unavailable_config, clock);
-  check(unavailable.initialize(initOptions(*clock)).code() ==
-            PDCM_STATUS_UNAVAILABLE,
-        "unavailable fixture fails initialization explicitly");
-  check(unavailable.state() == ProviderState::kUnavailable,
-        "unavailable fixture publishes state");
+  EXPECT_EQ(unavailable.initialize(initOptions(*clock)).code(),
+            PDCM_STATUS_UNAVAILABLE);
+  EXPECT_EQ(unavailable.state(), ProviderState::kUnavailable);
 
+  MockProvider provider(MockProviderConfig{}, clock);
+  ASSERT_TRUE(provider.initialize(initOptions(*clock)).ok());
   ProviderReadRequest expired = readRequest(*clock);
   expired.items = {
       readItem(ProviderDataKind::kMetric, kTestGaugeMetricId),
   };
   clock->advance(std::chrono::seconds(2));
-  ProviderReadResult timeout = single.batchRead(expired);
-  check(timeout.call_status.code() == PDCM_STATUS_TIMEOUT,
-        "expired read returns timeout");
-  check(timeout.items.size() == 1 &&
-            timeout.items[0].status == ObservationStatus::kError,
-        "timeout preserves an item-level result");
 
-  single.shutdown();
-  check(single.state() == ProviderState::kShutdown,
-        "shutdown is externally visible");
-  single.shutdown();
-  check(single.batchRead(readRequest(*clock)).call_status.code() ==
-            PDCM_STATUS_UNAVAILABLE,
-        "shutdown provider rejects new reads");
+  ProviderReadResult timeout = provider.batchRead(expired);
+  EXPECT_EQ(timeout.call_status.code(), PDCM_STATUS_TIMEOUT);
+  ASSERT_EQ(timeout.items.size(), 1);
+  EXPECT_EQ(timeout.items[0].status, ObservationStatus::kError);
 
-  bool backwards_rejected = false;
-  try {
-    clock->advance(std::chrono::nanoseconds(-1));
-  } catch (const std::invalid_argument &) {
-    backwards_rejected = true;
-  }
-  check(backwards_rejected, "manual clock rejects backward movement");
-
-  return failures == 0 ? 0 : 1;
+  provider.shutdown();
+  EXPECT_EQ(provider.state(), ProviderState::kShutdown);
+  provider.shutdown();
+  EXPECT_EQ(provider.batchRead(readRequest(*clock)).call_status.code(),
+            PDCM_STATUS_UNAVAILABLE);
 }
+
+TEST(ManualClockTest, RejectsBackwardMovement) {
+  ManualClock clock(100, 1000);
+  EXPECT_THROW(clock.advance(std::chrono::nanoseconds(-1)),
+               std::invalid_argument);
+}
+
+} // namespace
+} // namespace pdcm::testkit

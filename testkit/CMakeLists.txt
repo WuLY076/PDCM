@@ -24,15 +24,21 @@ pdcm_enable_warnings(pdcm_mock_provider)
 pdcm_enable_sanitizers(pdcm_mock_provider)
 
 if(BUILD_TESTING)
+  find_package(GTest 1.14 CONFIG REQUIRED)
+  include(GoogleTest)
+
   add_executable(
     pdcm_mock_provider_test
     tests/mock_provider_test.cpp
   )
   target_link_libraries(
     pdcm_mock_provider_test
-    PRIVATE pdcm_mock_provider
+    PRIVATE pdcm_mock_provider GTest::gtest_main
   )
   pdcm_enable_warnings(pdcm_mock_provider_test)
   pdcm_enable_sanitizers(pdcm_mock_provider_test)
-  add_test(NAME testkit.mock_provider COMMAND pdcm_mock_provider_test)
+  gtest_discover_tests(
+    pdcm_mock_provider_test
+    TEST_PREFIX "testkit.mock_provider."
+  )
 endif()

@@ -61,6 +61,9 @@ install(
 )
 
 if(BUILD_TESTING)
+  find_package(GTest 1.14 CONFIG REQUIRED)
+  include(GoogleTest)
+
   add_executable(
     pdcm_public_headers_c_test
     tests/unit/public_headers_c_test.c
@@ -82,9 +85,12 @@ if(BUILD_TESTING)
   )
   target_link_libraries(
     pdcm_foundation_test
-    PRIVATE pdcm_common pdcm_provider_contract
+    PRIVATE pdcm_common pdcm_provider_contract GTest::gtest_main
   )
   pdcm_enable_warnings(pdcm_foundation_test)
   pdcm_enable_sanitizers(pdcm_foundation_test)
-  add_test(NAME product.foundation COMMAND pdcm_foundation_test)
+  gtest_discover_tests(
+    pdcm_foundation_test
+    TEST_PREFIX "product.foundation."
+  )
 endif()
