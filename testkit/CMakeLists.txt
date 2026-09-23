@@ -41,4 +41,19 @@ if(BUILD_TESTING)
     pdcm_mock_provider_test
     TEST_PREFIX "testkit.mock_provider."
   )
+
+  add_executable(
+    pdcm_core_lifecycle_test
+    tests/core_lifecycle_test.cpp
+  )
+  target_link_libraries(
+    pdcm_core_lifecycle_test
+    PRIVATE pdcm_mock_provider PDCM::core GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_core_lifecycle_test)
+  pdcm_enable_sanitizers(pdcm_core_lifecycle_test)
+  gtest_discover_tests(
+    pdcm_core_lifecycle_test
+    TEST_PREFIX "testkit.core_lifecycle."
+  )
 endif()

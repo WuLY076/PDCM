@@ -54,6 +54,26 @@ target_include_directories(
 )
 target_link_libraries(pdcm_provider_contract INTERFACE pdcm_common)
 
+add_library(
+  pdcm_core
+  STATIC
+    src/core/runtime_config.cpp
+    src/core/service_core.cpp
+    src/provider/provider_manager.cpp
+)
+add_library(PDCM::core ALIAS pdcm_core)
+target_include_directories(
+  pdcm_core
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+)
+target_link_libraries(
+  pdcm_core
+  PUBLIC pdcm_common pdcm_provider_contract
+)
+pdcm_enable_warnings(pdcm_core)
+pdcm_enable_sanitizers(pdcm_core)
+
 install(
   DIRECTORY include/pdcm
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
@@ -92,5 +112,20 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_foundation_test
     TEST_PREFIX "product.foundation."
+  )
+
+  add_executable(
+    pdcm_runtime_config_test
+    tests/unit/runtime_config_test.cpp
+  )
+  target_link_libraries(
+    pdcm_runtime_config_test
+    PRIVATE pdcm_core GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_runtime_config_test)
+  pdcm_enable_sanitizers(pdcm_runtime_config_test)
+  gtest_discover_tests(
+    pdcm_runtime_config_test
+    TEST_PREFIX "product.runtime_config."
   )
 endif()
