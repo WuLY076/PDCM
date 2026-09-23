@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package pdcm.local.v1;
+
+enum CoreState {
+  CORE_STATE_UNSPECIFIED = 0;
+  CORE_STATE_CREATED = 1;
+  CORE_STATE_STARTING = 2;
+  CORE_STATE_READY = 3;
+  CORE_STATE_DEGRADED = 4;
+  CORE_STATE_FAILED = 5;
+  CORE_STATE_STOPPING = 6;
+  CORE_STATE_STOPPED = 7;
+}
+
+enum ProviderState {
+  PROVIDER_STATE_UNSPECIFIED = 0;
+  PROVIDER_STATE_UNINITIALIZED = 1;
+  PROVIDER_STATE_READY = 2;
+  PROVIDER_STATE_UNAVAILABLE = 3;
+  PROVIDER_STATE_SHUTDOWN = 4;
+}
+
+enum ProviderFailurePhase {
+  PROVIDER_FAILURE_PHASE_NONE = 0;
+  PROVIDER_FAILURE_PHASE_LOAD = 1;
+  PROVIDER_FAILURE_PHASE_ENTRY = 2;
+  PROVIDER_FAILURE_PHASE_ABI = 3;
+  PROVIDER_FAILURE_PHASE_NATIVE_INITIALIZE = 4;
+  PROVIDER_FAILURE_PHASE_DISCOVERY = 5;
+}
+
+message ResourceLimits {
+  uint32 max_outstanding_requests = 1;
+  uint32 max_watches = 2;
+  uint32 max_subscriptions = 3;
+  uint32 max_frame_bytes = 4;
+}
+
+message HelloRequest {
+  uint32 protocol_major = 1;
+  uint32 protocol_minor = 2;
+  string client_library_version = 3;
+  uint64 process_id = 4;
+  bytes nonce = 5;
+  repeated string requested_features = 6;
+}
+
+message HelloResponse {
+  uint32 protocol_major = 1;
+  uint32 protocol_minor = 2;
+  uint64 session_id = 3;
+  string daemon_version = 4;
+  CoreState core_state = 5;
+  ProviderState provider_state = 6;
+  ProviderFailurePhase provider_failure_phase = 7;
+  uint64 catalog_generation = 8;
+  uint32 detected_device_count = 9;
+  int32 detail_status = 10;
+  ResourceLimits limits = 11;
+}
+
+message ErrorResponse {
+  int32 status = 1;
+  string stable_reason = 2;
+  uint32 supported_protocol_major = 3;
+  uint32 supported_protocol_minor = 4;
+}
+
+message VersionRequest {}
+
+message VersionResponse {
+  string daemon_version = 1;
+  uint32 protocol_major = 2;
+  uint32 protocol_minor = 3;
+  CoreState core_state = 4;
+  ProviderState provider_state = 5;
+  uint64 catalog_generation = 6;
+}

@@ -23,6 +23,7 @@ option(PDCM_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSani
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(PdcmWarnings)
 include(GNUInstallDirs)
+find_package(Protobuf 3.21 REQUIRED)
 
 add_library(
   pdcm_common
@@ -73,6 +74,43 @@ target_link_libraries(
 )
 pdcm_enable_warnings(pdcm_core)
 pdcm_enable_sanitizers(pdcm_core)
+
+add_library(
+  pdcm_local_protocol_proto
+  STATIC
+    proto/local/pdcm_local.proto
+)
+add_library(PDCM::local_protocol_proto ALIAS pdcm_local_protocol_proto)
+protobuf_generate(
+  TARGET pdcm_local_protocol_proto
+  LANGUAGE cpp
+)
+target_include_directories(
+  pdcm_local_protocol_proto
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>"
+)
+target_link_libraries(
+  pdcm_local_protocol_proto
+  PUBLIC protobuf::libprotobuf
+)
+
+add_library(
+  pdcm_ipc
+  STATIC
+    src/ipc/frame.cpp
+)
+add_library(PDCM::ipc ALIAS pdcm_ipc)
+target_include_directories(
+  pdcm_ipc
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+)
+target_link_libraries(
+  pdcm_ipc
+  PUBLIC pdcm_common pdcm_local_protocol_proto
+)
+pdcm_enable_warnings(pdcm_ipc)
+pdcm_enable_sanitizers(pdcm_ipc)
 
 install(
   DIRECTORY include/pdcm
@@ -127,5 +165,20 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_runtime_config_test
     TEST_PREFIX "product.runtime_config."
+  )
+
+  add_executable(
+    pdcm_frame_test
+    tests/unit/frame_test.cpp
+  )
+  target_link_libraries(
+    pdcm_frame_test
+    PRIVATE pdcm_ipc GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_frame_test)
+  pdcm_enable_sanitizers(pdcm_frame_test)
+  gtest_discover_tests(
+    pdcm_frame_test
+    TEST_PREFIX "product.ipc.frame."
   )
 endif()
