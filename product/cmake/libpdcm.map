@@ -1,0 +1,8 @@
+PDCM_0.1 {
+  global:
+    pdcm_open;
+    pdcm_version_get;
+    pdcm_close;
+  local:
+    *;
+};

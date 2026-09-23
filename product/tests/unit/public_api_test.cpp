@@ -1,0 +1,81 @@
+#include <cstdint>
+
+#include <gtest/gtest.h>
+
+#include "pdcm/pdcm.h"
+
+namespace {
+
+TEST(PublicApiTest, ReturnsLocalVersionWithoutHandle) {
+  pdcm_version_info_t version = PDCM_VERSION_INFO_INIT;
+
+  ASSERT_EQ(pdcm_version_get(nullptr, &version), PDCM_STATUS_SUCCESS);
+  EXPECT_STREQ(version.library_version, "0.1.0");
+  EXPECT_EQ(version.public_abi_major, PDCM_ABI_VERSION_MAJOR);
+  EXPECT_EQ(version.local_protocol_major, 1);
+  EXPECT_EQ(version.mode, 0);
+}
+
+TEST(PublicApiTest, RejectsInvalidStructuresAndProtocolMajor) {
+  pdcm_version_info_t version = PDCM_VERSION_INFO_INIT;
+  version.header.struct_size =
+      static_cast<std::uint32_t>(sizeof(pdcm_struct_header_t));
+  EXPECT_EQ(pdcm_version_get(nullptr, &version), PDCM_STATUS_INVALID_ARGUMENT);
+
+  pdcm_open_options_t options = PDCM_OPEN_OPTIONS_INIT;
+  options.required_protocol_major = 2;
+  pdcm_handle_t *handle = nullptr;
+  EXPECT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_UNSUPPORTED);
+  EXPECT_EQ(handle, nullptr);
+
+  options = PDCM_OPEN_OPTIONS_INIT;
+  options.endpoint = "relative.sock";
+  EXPECT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_INVALID_ARGUMENT);
+  EXPECT_EQ(handle, nullptr);
+}
+
+TEST(PublicApiTest, DefaultStandaloneFailsWithoutDaemon) {
+  pdcm_handle_t *handle = nullptr;
+  EXPECT_EQ(pdcm_open(nullptr, &handle), PDCM_STATUS_UNAVAILABLE);
+  EXPECT_EQ(handle, nullptr);
+}
+
+TEST(PublicApiTest, EmbeddedOpenReturnsDiagnosableDegradedHandle) {
+  pdcm_open_options_t options = PDCM_OPEN_OPTIONS_INIT;
+  options.mode = PDCM_MODE_EMBEDDED;
+  options.target = PDCM_TARGET_FPGA;
+
+  pdcm_handle_t *handle = nullptr;
+  ASSERT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_SUCCESS);
+  ASSERT_NE(handle, nullptr);
+
+  pdcm_version_info_t version = PDCM_VERSION_INFO_INIT;
+  ASSERT_EQ(pdcm_version_get(handle, &version), PDCM_STATUS_SUCCESS);
+  EXPECT_EQ(version.mode, PDCM_MODE_EMBEDDED);
+  EXPECT_EQ(version.target, PDCM_TARGET_FPGA);
+  EXPECT_EQ(version.core_state, PDCM_CORE_STATE_DEGRADED);
+  EXPECT_EQ(version.provider_state, PDCM_PROVIDER_STATE_UNAVAILABLE);
+  EXPECT_EQ(version.provider_load_state, PDCM_PROVIDER_LOAD_NOT_ATTEMPTED);
+  EXPECT_EQ(version.detail_status, PDCM_STATUS_UNAVAILABLE);
+  EXPECT_GT(version.session_id, 0);
+
+  EXPECT_EQ(pdcm_close(&handle), PDCM_STATUS_SUCCESS);
+  EXPECT_EQ(handle, nullptr);
+  EXPECT_EQ(pdcm_close(&handle), PDCM_STATUS_INVALID_ARGUMENT);
+}
+
+TEST(PublicApiTest, AutoFallbackRequiresExplicitFlagAndTarget) {
+  pdcm_open_options_t options = PDCM_OPEN_OPTIONS_INIT;
+  options.mode = PDCM_MODE_AUTO;
+  options.target = PDCM_TARGET_FPGA;
+
+  pdcm_handle_t *handle = nullptr;
+  EXPECT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_UNAVAILABLE);
+
+  options.flags = PDCM_OPEN_ALLOW_EMBEDDED_FALLBACK;
+  ASSERT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_SUCCESS);
+  EXPECT_NE(handle, nullptr);
+  EXPECT_EQ(pdcm_close(&handle), PDCM_STATUS_SUCCESS);
+}
+
+} // namespace

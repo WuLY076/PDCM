@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include "pdcm/base.h"
+#include "pdcm/pdcm.h"
 #include "pdcm/status.h"
 #include "pdcm/types.h"
 
@@ -12,6 +13,8 @@ _Static_assert(offsetof(pdcm_entity_ref_t, pdcm_id) == 16,
                "entity reference layout changed");
 
 int main(void) {
+  pdcm_open_options_t options = PDCM_OPEN_OPTIONS_INIT;
+  pdcm_version_info_t version = PDCM_VERSION_INFO_INIT;
   pdcm_entity_ref_t entity = {
       .header = {.struct_size = (uint32_t)sizeof(pdcm_entity_ref_t),
                  .version = PDCM_STRUCT_VERSION_1},
@@ -20,5 +23,9 @@ int main(void) {
       .pdcm_id = 0u,
       .generation = 1u,
   };
-  return entity.generation == 1u ? 0 : 1;
+  return entity.generation == 1u &&
+                 options.mode == (uint32_t)PDCM_MODE_STANDALONE &&
+                 version.header.struct_size == sizeof(pdcm_version_info_t)
+             ? 0
+             : 1;
 }

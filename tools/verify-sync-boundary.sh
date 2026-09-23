@@ -16,4 +16,9 @@ cmake -S "${repo_root}/product" -B "${build_root}/product" -G Ninja \
 cmake --build "${build_root}/product"
 ctest --test-dir "${build_root}/product" --output-on-failure
 
-echo "product/ is independent from testkit/"
+if readelf -d "${build_root}/product/libpdcm.so" | rg -i 'libpdrl'; then
+  echo "libpdcm.so has a forbidden libpdrl.so dynamic dependency" >&2
+  exit 1
+fi
+
+echo "product/ is independent from testkit/ and libpdrl.so"

@@ -56,4 +56,19 @@ if(BUILD_TESTING)
     pdcm_core_lifecycle_test
     TEST_PREFIX "testkit.core_lifecycle."
   )
+
+  add_executable(
+    pdcm_embedded_backend_test
+    tests/embedded_backend_test.cpp
+  )
+  target_link_libraries(
+    pdcm_embedded_backend_test
+    PRIVATE pdcm_mock_provider PDCM::client_backend GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_embedded_backend_test)
+  pdcm_enable_sanitizers(pdcm_embedded_backend_test)
+  gtest_discover_tests(
+    pdcm_embedded_backend_test
+    TEST_PREFIX "testkit.embedded_backend."
+  )
 endif()

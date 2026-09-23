@@ -16,6 +16,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(PDCM_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 option(PDCM_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
@@ -114,6 +115,73 @@ target_link_libraries(
 pdcm_enable_warnings(pdcm_ipc)
 pdcm_enable_sanitizers(pdcm_ipc)
 
+add_library(
+  pdcm_client_backend
+  STATIC
+    src/client/embedded_backend.cpp
+    src/provider/unavailable_provider.cpp
+)
+add_library(PDCM::client_backend ALIAS pdcm_client_backend)
+target_include_directories(
+  pdcm_client_backend
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+)
+target_link_libraries(
+  pdcm_client_backend
+  PUBLIC pdcm_core
+)
+pdcm_enable_warnings(pdcm_client_backend)
+pdcm_enable_sanitizers(pdcm_client_backend)
+
+add_library(
+  pdcm
+  SHARED
+    src/client/pdcm_api.cpp
+)
+add_library(PDCM::pdcm ALIAS pdcm)
+target_compile_definitions(pdcm PRIVATE PDCM_BUILD_SHARED)
+target_include_directories(
+  pdcm
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+  PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+target_link_libraries(
+  pdcm
+  PRIVATE pdcm_client_backend
+)
+set_target_properties(
+  pdcm
+  PROPERTIES
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES
+    VERSION "${PROJECT_VERSION}"
+    SOVERSION 0
+)
+if(UNIX AND NOT APPLE)
+  target_link_options(
+    pdcm
+    PRIVATE
+      "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/cmake/libpdcm.map"
+  )
+  set_property(
+    TARGET pdcm
+    APPEND PROPERTY LINK_DEPENDS
+      "${CMAKE_CURRENT_SOURCE_DIR}/cmake/libpdcm.map"
+  )
+endif()
+pdcm_enable_warnings(pdcm)
+pdcm_enable_sanitizers(pdcm)
+
+install(
+  TARGETS pdcm
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+)
+
 install(
   DIRECTORY include/pdcm
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
@@ -134,6 +202,32 @@ if(BUILD_TESTING)
   )
   pdcm_enable_warnings(pdcm_public_headers_c_test)
   add_test(NAME product.public_headers_c COMMAND pdcm_public_headers_c_test)
+
+  add_executable(
+    pdcm_public_api_test
+    tests/unit/public_api_test.cpp
+  )
+  target_link_libraries(
+    pdcm_public_api_test
+    PRIVATE PDCM::pdcm GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_public_api_test)
+  pdcm_enable_sanitizers(pdcm_public_api_test)
+  gtest_discover_tests(
+    pdcm_public_api_test
+    TEST_PREFIX "product.public_api."
+  )
+
+  if(UNIX AND NOT APPLE)
+    add_test(
+      NAME product.public_symbols
+      COMMAND
+        ${CMAKE_COMMAND}
+        "-DPDCM_NM=${CMAKE_NM}"
+        "-DPDCM_LIBRARY=$<TARGET_FILE:pdcm>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_public_symbols.cmake"
+    )
+  endif()
 
   add_executable(
     pdcm_foundation_test
