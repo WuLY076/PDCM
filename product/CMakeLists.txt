@@ -59,6 +59,7 @@ add_library(
   pdcm_core
   STATIC
     src/core/runtime_config.cpp
+    src/core/session_manager.cpp
     src/core/service_core.cpp
     src/provider/provider_manager.cpp
 )
@@ -98,6 +99,7 @@ add_library(
   pdcm_ipc
   STATIC
     src/ipc/frame.cpp
+    src/ipc/handshake.cpp
 )
 add_library(PDCM::ipc ALIAS pdcm_ipc)
 target_include_directories(
@@ -107,7 +109,7 @@ target_include_directories(
 )
 target_link_libraries(
   pdcm_ipc
-  PUBLIC pdcm_common pdcm_local_protocol_proto
+  PUBLIC pdcm_common pdcm_core pdcm_local_protocol_proto
 )
 pdcm_enable_warnings(pdcm_ipc)
 pdcm_enable_sanitizers(pdcm_ipc)
@@ -180,5 +182,20 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_frame_test
     TEST_PREFIX "product.ipc.frame."
+  )
+
+  add_executable(
+    pdcm_session_handshake_test
+    tests/unit/session_handshake_test.cpp
+  )
+  target_link_libraries(
+    pdcm_session_handshake_test
+    PRIVATE pdcm_ipc pdcm_core GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_session_handshake_test)
+  pdcm_enable_sanitizers(pdcm_session_handshake_test)
+  gtest_discover_tests(
+    pdcm_session_handshake_test
+    TEST_PREFIX "product.ipc.session_handshake."
   )
 endif()
