@@ -13,6 +13,7 @@ ProviderEntity makeDevice(const std::uint32_t index) {
   entity.stable_native_id = "mock-device-" + std::to_string(index);
   entity.pci_bdf = index == 0 ? "0000:01:00.0" : "0000:02:00.0";
   entity.pdrv_version = "mock-pdrv-1.0";
+  entity.incarnation = "mock-boot-1";
   entity.state = ProviderEntityState::kReady;
   entity.manageable = true;
   return entity;

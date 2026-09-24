@@ -10,6 +10,7 @@
 #include "core/runtime_config.hpp"
 #include "provider/provider.hpp"
 #include "provider/provider_manager.hpp"
+#include "semantic/semantic_catalog.hpp"
 
 namespace pdcm {
 
@@ -43,6 +44,9 @@ class PdcmServiceCore {
 public:
   PdcmServiceCore(RuntimeConfig config, std::unique_ptr<Provider> provider,
                   std::shared_ptr<const Clock> clock);
+  PdcmServiceCore(RuntimeConfig config, std::unique_ptr<Provider> provider,
+                  std::shared_ptr<const Clock> clock,
+                  TargetCatalog target_catalog);
   ~PdcmServiceCore();
 
   PdcmServiceCore(const PdcmServiceCore &) = delete;
@@ -53,6 +57,8 @@ public:
 
   [[nodiscard]] CoreSnapshot snapshot() const;
   [[nodiscard]] const RuntimeConfig &config() const noexcept;
+  [[nodiscard]] std::shared_ptr<const CatalogView>
+  catalogSnapshot() const noexcept;
 
 private:
   void publish(CoreState state, ProviderState provider_state,
@@ -65,6 +71,7 @@ private:
   std::shared_ptr<const Clock> clock_;
 
   mutable std::mutex state_mutex_;
+  SemanticCatalog semantic_catalog_;
   CoreSnapshot snapshot_;
 };
 

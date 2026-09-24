@@ -33,6 +33,16 @@ TEST(CoreLifecycleTest, SingleAndZeroDeviceReachReady) {
   EXPECT_EQ(single_snapshot.provider_state, ProviderState::kReady);
   EXPECT_EQ(single_snapshot.detected_device_count, 1);
   EXPECT_EQ(single_snapshot.catalog_generation, 1);
+  const std::shared_ptr<const CatalogView> single_catalog =
+      single.catalogSnapshot();
+  ASSERT_EQ(single_catalog->entities().size(), 1);
+  EXPECT_EQ(single_catalog->generation(), single_snapshot.catalog_generation);
+  EXPECT_EQ(single_catalog->entities().front().ref.id, EntityId{0});
+  EXPECT_EQ(single_catalog->entities().front().native_id.value,
+            "mock-device-0");
+  EXPECT_EQ(single_catalog->entities().front().pci_bdf.value, "0000:01:00.0");
+  EXPECT_EQ(single_catalog->entities().front().pdrv_version.value,
+            "mock-pdrv-1.0");
 
   PdcmServiceCore zero(config(), provider(MockScenario::kZeroDevice, clock),
                        clock);
@@ -40,6 +50,8 @@ TEST(CoreLifecycleTest, SingleAndZeroDeviceReachReady) {
   CoreSnapshot zero_snapshot = zero.snapshot();
   EXPECT_EQ(zero_snapshot.state, CoreState::kReady);
   EXPECT_EQ(zero_snapshot.detected_device_count, 0);
+  EXPECT_EQ(zero.catalogSnapshot()->generation(), 1);
+  EXPECT_TRUE(zero.catalogSnapshot()->entities().empty());
 }
 
 TEST(CoreLifecycleTest, MultipleDevicesEnterDiagnosableDegradedState) {
@@ -53,6 +65,10 @@ TEST(CoreLifecycleTest, MultipleDevicesEnterDiagnosableDegradedState) {
   EXPECT_EQ(snapshot.degraded_reason, CoreDegradedReason::kTopologyUnsupported);
   EXPECT_EQ(snapshot.detail_status, PDCM_STATUS_UNSUPPORTED);
   EXPECT_EQ(snapshot.detected_device_count, 2);
+  EXPECT_EQ(snapshot.catalog_generation, 1);
+  EXPECT_TRUE(core.catalogSnapshot()->topologyUnsupported());
+  EXPECT_EQ(core.catalogSnapshot()->detectedDeviceCount(), 2);
+  EXPECT_TRUE(core.catalogSnapshot()->entities().empty());
 }
 
 TEST(CoreLifecycleTest, ProviderFailureDoesNotFailCoreStartup) {

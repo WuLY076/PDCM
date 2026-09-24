@@ -4,12 +4,27 @@
 #include <utility>
 
 namespace pdcm {
+namespace {
+
+TargetCatalog defaultCatalog(const TargetKind target) {
+  return TargetCatalog::blocked(
+      target == TargetKind::kUnknown ? TargetKind::kFpga : target);
+}
+
+} // namespace
 
 PdcmServiceCore::PdcmServiceCore(RuntimeConfig config,
                                  std::unique_ptr<Provider> provider,
                                  std::shared_ptr<const Clock> clock)
+    : PdcmServiceCore(config, std::move(provider), std::move(clock),
+                      defaultCatalog(config.target)) {}
+
+PdcmServiceCore::PdcmServiceCore(RuntimeConfig config,
+                                 std::unique_ptr<Provider> provider,
+                                 std::shared_ptr<const Clock> clock,
+                                 TargetCatalog target_catalog)
     : config_(std::move(config)), provider_manager_(std::move(provider)),
-      clock_(std::move(clock)) {
+      clock_(std::move(clock)), semantic_catalog_(std::move(target_catalog)) {
   if (!clock_) {
     throw std::invalid_argument("PdcmServiceCore requires a clock");
   }
@@ -56,16 +71,26 @@ Status PdcmServiceCore::start() {
     return Status::success();
   }
 
-  if (discovery.descriptor.detected_device_count > 1) {
+  const CatalogCommitResult committed =
+      semantic_catalog_.commit(discovery.descriptor);
+  if (!committed.committed) {
+    publish(CoreState::kDegraded, provider_manager_.state(),
+            CoreDegradedReason::kDiscoveryFailed, committed.status.code(),
+            discovery.descriptor.detected_device_count,
+            committed.catalog_generation);
+    return Status::success();
+  }
+
+  if (committed.status.code() == PDCM_STATUS_UNSUPPORTED) {
     publish(CoreState::kDegraded, provider_manager_.state(),
             CoreDegradedReason::kTopologyUnsupported, PDCM_STATUS_UNSUPPORTED,
-            discovery.descriptor.detected_device_count, 0);
+            committed.detected_device_count, committed.catalog_generation);
     return Status::success();
   }
 
   publish(CoreState::kReady, provider_manager_.state(),
-          CoreDegradedReason::kNone, PDCM_STATUS_SUCCESS,
-          discovery.descriptor.detected_device_count, 1);
+          CoreDegradedReason::kNone, committed.status.code(),
+          committed.detected_device_count, committed.catalog_generation);
   return Status::success();
 }
 
@@ -87,6 +112,10 @@ Status PdcmServiceCore::stop() noexcept {
 CoreSnapshot PdcmServiceCore::snapshot() const {
   std::lock_guard<std::mutex> state_lock(state_mutex_);
   return snapshot_;
+}
+std::shared_ptr<const CatalogView>
+PdcmServiceCore::catalogSnapshot() const noexcept {
+  return semantic_catalog_.snapshot();
 }
 
 const RuntimeConfig &PdcmServiceCore::config() const noexcept {
