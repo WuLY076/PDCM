@@ -227,5 +227,45 @@ TEST(WatchManagerTest, MultipleDevicesNeverCreateCollectionWatch) {
   EXPECT_TRUE(manager.snapshot()->effective_watches.empty());
 }
 
+TEST(WatchManagerTest, SampleLimitCountsEachScheduledPeriodExactlyOnce) {
+  ActiveWatchCatalog catalog;
+  WatchManager manager;
+  ASSERT_TRUE(manager.activateCatalog(catalog.view, catalog.target).ok());
+
+  WatchRequirement limited = requirement(catalog, {MetricId{1}});
+  limited.sample_limit = 2;
+  const WatchCreateResult first =
+      manager.create(WatchOwner{WatchOwnerKind::kSession, 1}, limited);
+  ASSERT_TRUE(first.status.ok());
+
+  WatchRequirement unlimited = requirement(catalog, {MetricId{1}});
+  const WatchCreateResult second =
+      manager.create(WatchOwner{WatchOwnerKind::kSession, 2}, unlimited);
+  ASSERT_TRUE(second.status.ok());
+
+  ASSERT_TRUE(manager
+                  .recordSamples({first.watch_id, second.watch_id},
+                                 MonotonicTime{Nanoseconds{100}},
+                                 Nanoseconds{100})
+                  .ok());
+  ASSERT_TRUE(manager
+                  .recordSamples({first.watch_id, second.watch_id},
+                                 MonotonicTime{Nanoseconds{100}},
+                                 Nanoseconds{100})
+                  .ok());
+  EXPECT_EQ(manager.snapshot()->logical_watches.size(), 2U);
+
+  ASSERT_TRUE(manager
+                  .recordSamples({first.watch_id, second.watch_id},
+                                 MonotonicTime{Nanoseconds{200}},
+                                 Nanoseconds{100})
+                  .ok());
+  const auto snapshot = manager.snapshot();
+  ASSERT_EQ(snapshot->logical_watches.size(), 1U);
+  EXPECT_EQ(snapshot->logical_watches.front().id, second.watch_id);
+  ASSERT_EQ(snapshot->effective_watches.size(), 1U);
+  EXPECT_EQ(snapshot->effective_watches.front().logical_watches,
+            std::vector<WatchId>{second.watch_id});
+}
 } // namespace
 } // namespace pdcm

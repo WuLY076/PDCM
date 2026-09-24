@@ -1,10 +1,15 @@
 #include "collection/collection_coordinator.hpp"
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -20,16 +25,27 @@ public:
       : monotonic_ns_(monotonic_ns), wall_ns_(wall_ns) {}
 
   [[nodiscard]] MonotonicTime monotonicNow() const noexcept override {
-    return MonotonicTime{Nanoseconds{monotonic_ns_}};
+    return MonotonicTime{Nanoseconds{monotonic_ns_.load()}};
   }
 
   [[nodiscard]] std::int64_t wallTimeNanoseconds() const noexcept override {
-    return wall_ns_;
+    return wall_ns_.load();
+  }
+
+  void advance(const Nanoseconds delta) noexcept {
+    monotonic_ns_.fetch_add(delta.count());
+    wall_ns_.fetch_add(delta.count());
+  }
+
+  void set(const std::int64_t monotonic_ns,
+           const std::int64_t wall_ns) noexcept {
+    monotonic_ns_.store(monotonic_ns);
+    wall_ns_.store(wall_ns);
   }
 
 private:
-  std::int64_t monotonic_ns_;
-  std::int64_t wall_ns_;
+  std::atomic<std::int64_t> monotonic_ns_;
+  std::atomic<std::int64_t> wall_ns_;
 };
 
 class ScriptedProvider final : public Provider {
@@ -177,6 +193,49 @@ ProviderReadItemResult validItem(const ProviderReadItem &item,
   return result;
 }
 
+struct BlockingRead {
+  ProviderReadResult read(const ProviderReadRequest &request) {
+    {
+      std::unique_lock<std::mutex> lock(mutex);
+      ++calls;
+      entered = true;
+      changed.notify_all();
+      changed.wait(lock, [this] { return released; });
+    }
+
+    ProviderReadResult result;
+    result.call_status = Status::success();
+    for (const ProviderReadItem &item : request.items) {
+      result.items.push_back(validItem(item, item.data_id * 10U));
+    }
+    return result;
+  }
+
+  bool waitUntilEntered() {
+    std::unique_lock<std::mutex> lock(mutex);
+    return changed.wait_for(lock, std::chrono::seconds(1),
+                            [this] { return entered; });
+  }
+
+  void unblock() {
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      released = true;
+    }
+    changed.notify_all();
+  }
+
+  std::size_t callCount() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return calls;
+  }
+
+  mutable std::mutex mutex;
+  std::condition_variable changed;
+  bool entered{false};
+  bool released{false};
+  std::size_t calls{0};
+};
 TEST(CollectionCoordinatorTest, CompilesDeterministicBoundedPlanAtomically) {
   CollectionEnvironment environment([](const ProviderReadRequest &) {
     ProviderReadResult result;
@@ -380,6 +439,227 @@ TEST(CollectionCoordinatorTest, CallFailureCreatesExplainableItemFailures) {
     EXPECT_EQ(item.error.status.code(), PDCM_STATUS_UNAVAILABLE);
     EXPECT_FALSE(item.value.has_value());
   }
+}
+
+TEST(CollectionCoordinatorTest, SchedulerHasNoDriftBurstOrConcurrentSameKey) {
+  const auto blocker = std::make_shared<BlockingRead>();
+  CollectionEnvironment environment(
+      [blocker](const ProviderReadRequest &request) {
+        return blocker->read(request);
+      });
+  CollectionCoordinator coordinator(environment.provider, environment.data,
+                                    environment.clock);
+  ASSERT_TRUE(coordinator.applyWatchSnapshot(environment.watchBoth()).ok());
+
+  environment.clock->advance(Nanoseconds{100});
+  SchedulerRunSummary first =
+      coordinator.runDueOnce(environment.clock->monotonicNow());
+  EXPECT_EQ(first.enqueued_jobs, 1U);
+  ASSERT_TRUE(blocker->waitUntilEntered());
+
+  environment.clock->advance(Nanoseconds{100});
+  SchedulerRunSummary busy =
+      coordinator.runDueOnce(environment.clock->monotonicNow());
+  EXPECT_EQ(busy.busy_jobs, 1U);
+
+  environment.clock->advance(Nanoseconds{200});
+  SchedulerRunSummary missed =
+      coordinator.runDueOnce(environment.clock->monotonicNow());
+  EXPECT_EQ(missed.missed_periods, 1U);
+  EXPECT_EQ(missed.busy_jobs, 1U);
+  EXPECT_EQ(blocker->callCount(), 1U);
+
+  blocker->unblock();
+  const MonotonicTime real_deadline = std::chrono::time_point_cast<Nanoseconds>(
+                                          std::chrono::steady_clock::now()) +
+                                      std::chrono::seconds(1);
+  ASSERT_TRUE(environment.data.waitForEpoch(1, real_deadline).ok());
+
+  SchedulerRunSummary resumed;
+  MonotonicTime resumed_time;
+  for (std::size_t attempt = 0; attempt < 1000U && resumed.enqueued_jobs == 0;
+       ++attempt) {
+    std::this_thread::yield();
+    environment.clock->advance(Nanoseconds{100});
+    resumed_time = environment.clock->monotonicNow();
+    resumed = coordinator.runDueOnce(resumed_time);
+  }
+  ASSERT_EQ(resumed.enqueued_jobs, 1U);
+  const MonotonicTime second_deadline =
+      std::chrono::time_point_cast<Nanoseconds>(
+          std::chrono::steady_clock::now()) +
+      std::chrono::seconds(1);
+  ASSERT_TRUE(environment.data.waitForEpoch(2, second_deadline).ok());
+  ASSERT_EQ(environment.scripted->requests.size(), 2U);
+  EXPECT_EQ(environment.scripted->requests[0].scheduled_time,
+            MonotonicTime{Nanoseconds{250}});
+  EXPECT_EQ(environment.scripted->requests[1].scheduled_time, resumed_time);
+}
+
+TEST(CollectionCoordinatorTest, SchedulerQueueIsBounded) {
+  CollectionEnvironment environment([](const ProviderReadRequest &request) {
+    ProviderReadResult result;
+    result.call_status = Status::success();
+    for (const ProviderReadItem &item : request.items) {
+      result.items.push_back(validItem(item, item.data_id));
+    }
+    return result;
+  });
+  CollectionLimits limits;
+  limits.max_batch_items = 1;
+  limits.max_provider_queue = 1;
+  CollectionCoordinator coordinator(environment.provider, environment.data,
+                                    environment.clock, limits);
+  ASSERT_TRUE(coordinator.applyWatchSnapshot(environment.watchBoth()).ok());
+
+  environment.clock->advance(Nanoseconds{100});
+  const SchedulerRunSummary run =
+      coordinator.runDueOnce(environment.clock->monotonicNow());
+  EXPECT_EQ(run.enqueued_jobs, 1U);
+  EXPECT_EQ(run.queue_rejections, 1U);
+  EXPECT_EQ(run.status.code(), PDCM_STATUS_PARTIAL_RESULT);
+}
+
+TEST(CollectionCoordinatorTest, FreshReadCoalescesAndIsolatesWaiterTimeout) {
+  const auto blocker = std::make_shared<BlockingRead>();
+  CollectionEnvironment environment(
+      [blocker](const ProviderReadRequest &request) {
+        return blocker->read(request);
+      });
+  const MonotonicTime system_now = std::chrono::time_point_cast<Nanoseconds>(
+      std::chrono::steady_clock::now());
+  environment.clock->set(system_now.time_since_epoch().count(), 10000);
+
+  CollectionCoordinator coordinator(environment.provider, environment.data,
+                                    environment.clock);
+  ASSERT_TRUE(coordinator.activateCatalog(environment.view).ok());
+  ASSERT_TRUE(coordinator.applyWatchSnapshot(environment.watchBoth()).ok());
+  const std::vector<DataKey> keys = {
+      {environment.entity, MetricId{1}},
+      {environment.entity, MetricId{2}},
+  };
+
+  Status long_waiter;
+  const MonotonicTime long_deadline = system_now + std::chrono::seconds(2);
+  std::thread first([&] {
+    long_waiter = coordinator.freshRead(keys, environment.view->generation(),
+                                        long_deadline);
+  });
+  ASSERT_TRUE(blocker->waitUntilEntered());
+
+  const MonotonicTime short_deadline =
+      std::chrono::time_point_cast<Nanoseconds>(
+          std::chrono::steady_clock::now()) +
+      std::chrono::milliseconds(50);
+  const Status short_waiter = coordinator.freshRead(
+      keys, environment.view->generation(), short_deadline);
+  EXPECT_EQ(short_waiter.code(), PDCM_STATUS_TIMEOUT);
+  EXPECT_EQ(blocker->callCount(), 1U);
+
+  blocker->unblock();
+  first.join();
+  EXPECT_TRUE(long_waiter.ok());
+  EXPECT_EQ(blocker->callCount(), 1U);
+  EXPECT_EQ(environment.data.commitEpoch(), 1U);
+}
+TEST(CollectionCoordinatorTest, FreshReadNeedsNoPermanentWatch) {
+  CollectionEnvironment environment([](const ProviderReadRequest &request) {
+    ProviderReadResult result;
+    result.call_status = Status::success();
+    for (const ProviderReadItem &item : request.items) {
+      result.items.push_back(validItem(item, 33));
+    }
+    return result;
+  });
+  const MonotonicTime system_now = std::chrono::time_point_cast<Nanoseconds>(
+      std::chrono::steady_clock::now());
+  environment.clock->set(system_now.time_since_epoch().count(), 10000);
+
+  CollectionCoordinator coordinator(environment.provider, environment.data,
+                                    environment.clock);
+  ASSERT_TRUE(coordinator.activateCatalog(environment.view).ok());
+  EXPECT_TRUE(coordinator.plan()->jobs.empty());
+  ASSERT_TRUE(coordinator
+                  .freshRead({{environment.entity, MetricId{1}}},
+                             environment.view->generation(),
+                             system_now + std::chrono::seconds(1))
+                  .ok());
+  EXPECT_TRUE(coordinator.plan()->jobs.empty());
+  EXPECT_EQ(environment.data.commitEpoch(), 1U);
+
+  EXPECT_FALSE(coordinator.schedulerRunning());
+  ASSERT_TRUE(coordinator.startScheduler().ok());
+  EXPECT_TRUE(coordinator.schedulerRunning());
+  coordinator.stopScheduler();
+  EXPECT_FALSE(coordinator.schedulerRunning());
+}
+TEST(CollectionCoordinatorTest, InFlightOldGenerationCannotCommit) {
+  const auto blocker = std::make_shared<BlockingRead>();
+  CollectionEnvironment environment(
+      [blocker](const ProviderReadRequest &request) {
+        return blocker->read(request);
+      });
+  CollectionCoordinator coordinator(environment.provider, environment.data,
+                                    environment.clock);
+  ASSERT_TRUE(coordinator.applyWatchSnapshot(environment.watchBoth()).ok());
+
+  CollectionRunResult collected;
+  std::thread read([&] {
+    collected = coordinator.collectJob(1, MonotonicTime{Nanoseconds{100}},
+                                       MonotonicTime{Nanoseconds{300}});
+  });
+  ASSERT_TRUE(blocker->waitUntilEntered());
+
+  const CatalogCommitResult changed =
+      environment.semantic.commit(collectionProvider());
+  ASSERT_TRUE(changed.status.ok());
+  environment.view = environment.semantic.snapshot();
+  ASSERT_TRUE(
+      environment.data.activateCatalog(environment.view, environment.target)
+          .ok());
+
+  blocker->unblock();
+  read.join();
+  EXPECT_EQ(collected.status.code(), PDCM_STATUS_STALE_GENERATION);
+  EXPECT_EQ(environment.data.commitEpoch(), 0U);
+}
+TEST(CollectionCoordinatorTest, SampleLimitCountsFailuresAndRecompilesPlan) {
+  CollectionEnvironment environment([](const ProviderReadRequest &) {
+    ProviderReadResult result;
+    result.call_status =
+        Status(PDCM_STATUS_UNAVAILABLE, "scripted provider unavailable");
+    return result;
+  });
+
+  WatchRequirement requirement;
+  requirement.catalog_generation = environment.view->generation();
+  requirement.entity = environment.entity;
+  requirement.metrics = {MetricId{1}};
+  requirement.period = Nanoseconds{100};
+  requirement.freshness = Nanoseconds{200};
+  requirement.retention = Nanoseconds{400};
+  requirement.sample_limit = 2;
+  ASSERT_TRUE(environment.watches
+                  .create(WatchOwner{WatchOwnerKind::kSession, 7},
+                          std::move(requirement))
+                  .status.ok());
+
+  CollectionCoordinator coordinator(environment.provider, environment.data,
+                                    environment.clock, {},
+                                    &environment.watches);
+  ASSERT_TRUE(
+      coordinator.applyWatchSnapshot(environment.watches.snapshot()).ok());
+  ASSERT_EQ(coordinator.plan()->jobs.size(), 1U);
+
+  (void)coordinator.collectJob(1, MonotonicTime{Nanoseconds{100}},
+                               MonotonicTime{Nanoseconds{300}});
+  EXPECT_EQ(environment.watches.snapshot()->logical_watches.size(), 1U);
+  EXPECT_EQ(coordinator.plan()->jobs.size(), 1U);
+
+  (void)coordinator.collectJob(1, MonotonicTime{Nanoseconds{200}},
+                               MonotonicTime{Nanoseconds{400}});
+  EXPECT_TRUE(environment.watches.snapshot()->logical_watches.empty());
+  EXPECT_TRUE(coordinator.plan()->jobs.empty());
 }
 
 } // namespace

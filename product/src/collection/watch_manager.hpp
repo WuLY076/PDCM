@@ -124,6 +124,10 @@ public:
                                          WatchRequirement requirement);
   [[nodiscard]] Status destroy(const WatchOwner &owner, WatchId watch_id);
   [[nodiscard]] Status removeOwner(const WatchOwner &owner);
+  [[nodiscard]] Status recordSamples(std::vector<WatchId> watch_ids,
+                                     MonotonicTime first_scheduled_time,
+                                     Nanoseconds period,
+                                     std::uint64_t sample_count = 1);
   [[nodiscard]] std::shared_ptr<const WatchSnapshot> snapshot() const noexcept;
 
 private:
@@ -150,6 +154,8 @@ private:
   CatalogState catalog_;
   std::map<WatchId, LogicalWatch> logical_;
   std::shared_ptr<const WatchSnapshot> snapshot_;
+  std::map<WatchId, std::uint64_t> sample_counts_;
+  std::map<WatchId, MonotonicTime> last_sample_times_;
   WatchId next_watch_id_{1};
 };
 

@@ -216,6 +216,23 @@ Status WatchManager::publish(std::map<WatchId, LogicalWatch> next) {
                   "effective watch limit exceeded");
   }
   logical_ = std::move(next);
+  for (auto iterator = sample_counts_.begin();
+       iterator != sample_counts_.end();) {
+    if (logical_.find(iterator->first) == logical_.end()) {
+      last_sample_times_.erase(iterator->first);
+      iterator = sample_counts_.erase(iterator);
+    } else {
+      ++iterator;
+    }
+  }
+  for (auto iterator = last_sample_times_.begin();
+       iterator != last_sample_times_.end();) {
+    if (logical_.find(iterator->first) == logical_.end()) {
+      iterator = last_sample_times_.erase(iterator);
+    } else {
+      ++iterator;
+    }
+  }
   std::atomic_store_explicit(&snapshot_, std::move(next_snapshot),
                              std::memory_order_release);
   return Status::success();
@@ -306,6 +323,101 @@ Status WatchManager::removeOwner(const WatchOwner &owner) {
   return publish(std::move(next));
 }
 
+Status WatchManager::recordSamples(std::vector<WatchId> watch_ids,
+                                   const MonotonicTime first_scheduled_time,
+                                   const Nanoseconds period,
+                                   const std::uint64_t sample_count) {
+  if (watch_ids.empty() ||
+      first_scheduled_time.time_since_epoch().count() < 0 ||
+      period.count() <= 0 || sample_count == 0) {
+    return Status(PDCM_STATUS_INVALID_ARGUMENT,
+                  "logical sample token arguments are invalid");
+  }
+  std::sort(watch_ids.begin(), watch_ids.end());
+  if (std::adjacent_find(watch_ids.begin(), watch_ids.end()) !=
+      watch_ids.end()) {
+    return Status(PDCM_STATUS_INVALID_ARGUMENT,
+                  "logical sample token contains duplicate watch IDs");
+  }
+  const std::uint64_t intervals = sample_count - 1;
+  const auto max_time = std::numeric_limits<std::int64_t>::max();
+  if (intervals > static_cast<std::uint64_t>(max_time / period.count())) {
+    return Status(PDCM_STATUS_INVALID_ARGUMENT,
+                  "logical sample token time range overflows");
+  }
+  const std::int64_t delta =
+      period.count() * static_cast<std::int64_t>(intervals);
+  if (first_scheduled_time.time_since_epoch().count() > max_time - delta) {
+    return Status(PDCM_STATUS_INVALID_ARGUMENT,
+                  "logical sample token time range overflows");
+  }
+  const MonotonicTime last_scheduled_time =
+      first_scheduled_time + Nanoseconds{delta};
+
+  std::lock_guard<std::mutex> lock(mutex_);
+  std::map<WatchId, LogicalWatch> next = logical_;
+  std::map<WatchId, std::uint64_t> next_counts = sample_counts_;
+  std::map<WatchId, MonotonicTime> next_times = last_sample_times_;
+  bool found_any = false;
+  bool changed = false;
+  bool removed = false;
+
+  for (const WatchId watch_id : watch_ids) {
+    const auto watch = next.find(watch_id);
+    if (watch == next.end()) {
+      continue;
+    }
+    found_any = true;
+
+    std::uint64_t skipped = 0;
+    const auto previous = next_times.find(watch_id);
+    if (previous != next_times.end() &&
+        previous->second >= first_scheduled_time) {
+      const std::int64_t elapsed =
+          (previous->second - first_scheduled_time).count();
+      skipped = static_cast<std::uint64_t>(elapsed / period.count()) + 1;
+      if (skipped >= sample_count) {
+        continue;
+      }
+    }
+
+    const std::uint64_t added = sample_count - skipped;
+    const std::uint64_t current = next_counts[watch_id];
+    const std::uint64_t updated =
+        added > std::numeric_limits<std::uint64_t>::max() - current
+            ? std::numeric_limits<std::uint64_t>::max()
+            : current + added;
+    changed = true;
+
+    const std::uint64_t limit = watch->second.requirement.sample_limit;
+    if (limit != 0 && updated >= limit) {
+      next.erase(watch);
+      next_counts.erase(watch_id);
+      next_times.erase(watch_id);
+      removed = true;
+    } else {
+      next_counts[watch_id] = updated;
+      next_times[watch_id] = last_scheduled_time;
+    }
+  }
+
+  if (!found_any) {
+    return Status(PDCM_STATUS_NOT_FOUND,
+                  "logical sample token has no active watches");
+  }
+  if (!changed) {
+    return Status::success();
+  }
+  if (removed) {
+    const Status status = publish(std::move(next));
+    if (!status.ok()) {
+      return status;
+    }
+  }
+  sample_counts_ = std::move(next_counts);
+  last_sample_times_ = std::move(next_times);
+  return Status::success();
+}
 std::shared_ptr<const WatchSnapshot> WatchManager::snapshot() const noexcept {
   return std::atomic_load_explicit(&snapshot_, std::memory_order_acquire);
 }
