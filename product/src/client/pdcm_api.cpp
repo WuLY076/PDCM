@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -15,6 +16,7 @@
 
 #include "client/backend.hpp"
 #include "client/embedded_backend.hpp"
+#include "client/standalone_backend.hpp"
 #include "common/clock.hpp"
 #include "core/runtime_config.hpp"
 #include "ipc/frame.hpp"
@@ -82,7 +84,8 @@ pdcm_status_t parseOptions(const pdcm_open_options_t *const options,
   if ((options->flags & ~kKnownOpenFlags) != 0 || options->reserved != 0) {
     return PDCM_STATUS_INVALID_ARGUMENT;
   }
-  if (options->required_protocol_major != pdcm::ipc::kProtocolMajor) {
+  if (options->required_protocol_major != pdcm::ipc::kProtocolMajor ||
+      options->required_protocol_minor > pdcm::ipc::kProtocolMinor) {
     return PDCM_STATUS_UNSUPPORTED;
   }
 
@@ -108,8 +111,13 @@ pdcm_status_t parseOptions(const pdcm_open_options_t *const options,
 
   effective->flags = options->flags;
   if (options->deadline_ns != 0) {
+    if (options->deadline_ns >
+        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+      return PDCM_STATUS_INVALID_ARGUMENT;
+    }
     effective->deadline = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::nanoseconds(options->deadline_ns));
+        std::chrono::nanoseconds(
+            static_cast<std::int64_t>(options->deadline_ns)));
     if (effective->deadline.count() <= 0) {
       effective->deadline = std::chrono::milliseconds(1);
     }
@@ -300,18 +308,35 @@ pdcm_status_t openEmbedded(const EffectiveOptions &options,
   return PDCM_STATUS_SUCCESS;
 }
 
+pdcm_status_t openStandalone(const EffectiveOptions &options,
+                             pdcm_handle_t **const out_handle) {
+  auto backend = std::make_unique<pdcm::StandaloneBackend>(
+      options.endpoint, options.deadline,
+      pdcm::ResourceLimits{}.max_frame_bytes);
+  const pdcm::Status started = backend->start();
+  if (!started.ok()) {
+    return started.code();
+  }
+
+  auto handle = std::make_unique<pdcm_handle>();
+  handle->backend = std::move(backend);
+  *out_handle = handle.release();
+  return PDCM_STATUS_SUCCESS;
+}
+
 pdcm_status_t openSelectedBackend(const EffectiveOptions &options,
                                   pdcm_handle_t **const out_handle) {
   if (options.mode == PDCM_MODE_EMBEDDED) {
     return openEmbedded(options, out_handle);
   }
 
-  if (options.mode == PDCM_MODE_STANDALONE) {
-    return PDCM_STATUS_UNAVAILABLE;
-  }
-
-  if ((options.flags & PDCM_OPEN_ALLOW_EMBEDDED_FALLBACK) == 0) {
-    return PDCM_STATUS_UNAVAILABLE;
+  const pdcm_status_t standalone_status = openStandalone(options, out_handle);
+  if (standalone_status == PDCM_STATUS_SUCCESS ||
+      options.mode == PDCM_MODE_STANDALONE ||
+      (options.flags & PDCM_OPEN_ALLOW_EMBEDDED_FALLBACK) == 0 ||
+      (standalone_status != PDCM_STATUS_UNAVAILABLE &&
+       standalone_status != PDCM_STATUS_TIMEOUT)) {
+    return standalone_status;
   }
   return openEmbedded(options, out_handle);
 }

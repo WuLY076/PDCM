@@ -1,4 +1,8 @@
 #include <cstdint>
+#include <limits>
+#include <string>
+
+#include <unistd.h>
 
 #include <gtest/gtest.h>
 
@@ -29,14 +33,29 @@ TEST(PublicApiTest, RejectsInvalidStructuresAndProtocolMajor) {
   EXPECT_EQ(handle, nullptr);
 
   options = PDCM_OPEN_OPTIONS_INIT;
+  options.required_protocol_minor = 1;
+  EXPECT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_UNSUPPORTED);
+  EXPECT_EQ(handle, nullptr);
+
+  options = PDCM_OPEN_OPTIONS_INIT;
+  options.deadline_ns = std::numeric_limits<std::uint64_t>::max();
+  EXPECT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_INVALID_ARGUMENT);
+  EXPECT_EQ(handle, nullptr);
+
+  options = PDCM_OPEN_OPTIONS_INIT;
   options.endpoint = "relative.sock";
   EXPECT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_INVALID_ARGUMENT);
   EXPECT_EQ(handle, nullptr);
 }
 
-TEST(PublicApiTest, DefaultStandaloneFailsWithoutDaemon) {
+TEST(PublicApiTest, StandaloneFailsForMissingDaemon) {
+  const std::string endpoint =
+      "/tmp/pdcm-missing-" + std::to_string(::getpid()) + ".sock";
+  pdcm_open_options_t options = PDCM_OPEN_OPTIONS_INIT;
+  options.endpoint = endpoint.c_str();
+
   pdcm_handle_t *handle = nullptr;
-  EXPECT_EQ(pdcm_open(nullptr, &handle), PDCM_STATUS_UNAVAILABLE);
+  EXPECT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_UNAVAILABLE);
   EXPECT_EQ(handle, nullptr);
 }
 
@@ -68,6 +87,9 @@ TEST(PublicApiTest, AutoFallbackRequiresExplicitFlagAndTarget) {
   pdcm_open_options_t options = PDCM_OPEN_OPTIONS_INIT;
   options.mode = PDCM_MODE_AUTO;
   options.target = PDCM_TARGET_FPGA;
+  const std::string endpoint =
+      "/tmp/pdcm-auto-missing-" + std::to_string(::getpid()) + ".sock";
+  options.endpoint = endpoint.c_str();
 
   pdcm_handle_t *handle = nullptr;
   EXPECT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_UNAVAILABLE);

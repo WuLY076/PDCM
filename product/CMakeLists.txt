@@ -101,6 +101,8 @@ add_library(
   STATIC
     src/ipc/frame.cpp
     src/ipc/handshake.cpp
+    src/ipc/local_api_server.cpp
+    src/ipc/unix_socket.cpp
 )
 add_library(PDCM::ipc ALIAS pdcm_ipc)
 target_include_directories(
@@ -119,6 +121,7 @@ add_library(
   pdcm_client_backend
   STATIC
     src/client/embedded_backend.cpp
+    src/client/standalone_backend.cpp
     src/provider/unavailable_provider.cpp
 )
 add_library(PDCM::client_backend ALIAS pdcm_client_backend)
@@ -129,7 +132,7 @@ target_include_directories(
 )
 target_link_libraries(
   pdcm_client_backend
-  PUBLIC pdcm_core
+  PUBLIC pdcm_core pdcm_ipc
 )
 pdcm_enable_warnings(pdcm_client_backend)
 pdcm_enable_sanitizers(pdcm_client_backend)
@@ -276,6 +279,21 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_frame_test
     TEST_PREFIX "product.ipc.frame."
+  )
+
+  add_executable(
+    pdcm_unix_socket_test
+    tests/unit/unix_socket_test.cpp
+  )
+  target_link_libraries(
+    pdcm_unix_socket_test
+    PRIVATE pdcm_ipc GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_unix_socket_test)
+  pdcm_enable_sanitizers(pdcm_unix_socket_test)
+  gtest_discover_tests(
+    pdcm_unix_socket_test
+    TEST_PREFIX "product.ipc.unix_socket."
   )
 
   add_executable(

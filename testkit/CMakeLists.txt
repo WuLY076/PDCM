@@ -71,4 +71,39 @@ if(BUILD_TESTING)
     pdcm_embedded_backend_test
     TEST_PREFIX "testkit.embedded_backend."
   )
+
+  add_executable(
+    pdcm_mock_daemon_fixture
+    src/mock_daemon_fixture.cpp
+  )
+  target_link_libraries(
+    pdcm_mock_daemon_fixture
+    PRIVATE pdcm_mock_provider PDCM::ipc
+  )
+  pdcm_enable_warnings(pdcm_mock_daemon_fixture)
+  pdcm_enable_sanitizers(pdcm_mock_daemon_fixture)
+
+  add_executable(
+    pdcm_standalone_roundtrip_test
+    tests/standalone_roundtrip_test.cpp
+  )
+  add_dependencies(
+    pdcm_standalone_roundtrip_test
+    pdcm_mock_daemon_fixture
+  )
+  target_compile_definitions(
+    pdcm_standalone_roundtrip_test
+    PRIVATE
+      PDCM_MOCK_DAEMON_PATH="$<TARGET_FILE:pdcm_mock_daemon_fixture>"
+  )
+  target_link_libraries(
+    pdcm_standalone_roundtrip_test
+    PRIVATE PDCM::pdcm GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_standalone_roundtrip_test)
+  pdcm_enable_sanitizers(pdcm_standalone_roundtrip_test)
+  gtest_discover_tests(
+    pdcm_standalone_roundtrip_test
+    TEST_PREFIX "testkit.standalone_roundtrip."
+  )
 endif()
