@@ -42,6 +42,7 @@ struct Observation {
   MetricId metric;
   std::optional<MetricValue> value;
   ObservationStatus status{ObservationStatus::kNotAvailable};
+  std::int64_t scheduled_monotonic_time_ns{0};
   std::optional<std::int64_t> source_sample_time_ns;
   std::int64_t observed_monotonic_time_ns{0};
   std::uint32_t metric_semantic_version{0};

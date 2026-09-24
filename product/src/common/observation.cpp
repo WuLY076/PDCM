@@ -9,7 +9,8 @@ Status validateObservation(const Observation &observation) {
     return Status(PDCM_STATUS_INVALID_ARGUMENT,
                   "observation identity or semantic version is invalid");
   }
-  if (observation.observed_monotonic_time_ns < 0 ||
+  if (observation.scheduled_monotonic_time_ns < 0 ||
+      observation.observed_monotonic_time_ns < 0 ||
       observation.catalog_generation == 0 ||
       (observation.source_sample_time_ns.has_value() &&
        *observation.source_sample_time_ns < 0)) {

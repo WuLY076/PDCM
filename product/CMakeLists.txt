@@ -57,6 +57,24 @@ target_include_directories(
 target_link_libraries(pdcm_provider_contract INTERFACE pdcm_common)
 
 add_library(
+  pdcm_provider_runtime
+  STATIC
+    src/provider/provider_manager.cpp
+)
+add_library(PDCM::provider_runtime ALIAS pdcm_provider_runtime)
+target_include_directories(
+  pdcm_provider_runtime
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+)
+target_link_libraries(
+  pdcm_provider_runtime
+  PUBLIC pdcm_provider_contract
+)
+pdcm_enable_warnings(pdcm_provider_runtime)
+pdcm_enable_sanitizers(pdcm_provider_runtime)
+
+add_library(
   pdcm_semantic
   STATIC
     src/semantic/semantic_catalog.cpp
@@ -98,6 +116,7 @@ pdcm_enable_sanitizers(pdcm_data)
 add_library(
   pdcm_collection
   STATIC
+    src/collection/collection_coordinator.cpp
     src/collection/watch_manager.cpp
 )
 add_library(PDCM::collection ALIAS pdcm_collection)
@@ -108,7 +127,8 @@ target_include_directories(
 )
 target_link_libraries(
   pdcm_collection
-  PUBLIC pdcm_common pdcm_provider_contract pdcm_semantic pdcm_data
+  PUBLIC
+    pdcm_common pdcm_provider_runtime pdcm_semantic pdcm_data
 )
 pdcm_enable_warnings(pdcm_collection)
 pdcm_enable_sanitizers(pdcm_collection)
@@ -119,7 +139,6 @@ add_library(
     src/core/runtime_config.cpp
     src/core/session_manager.cpp
     src/core/service_core.cpp
-    src/provider/provider_manager.cpp
 )
 add_library(PDCM::core ALIAS pdcm_core)
 target_include_directories(
@@ -129,7 +148,7 @@ target_include_directories(
 )
 target_link_libraries(
   pdcm_core
-  PUBLIC pdcm_common pdcm_provider_contract pdcm_semantic
+  PUBLIC pdcm_common pdcm_provider_runtime pdcm_semantic
 )
 pdcm_enable_warnings(pdcm_core)
 pdcm_enable_sanitizers(pdcm_core)
@@ -442,5 +461,20 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_watch_manager_test
     TEST_PREFIX "product.watch."
+  )
+
+  add_executable(
+    pdcm_collection_coordinator_test
+    tests/unit/collection_coordinator_test.cpp
+  )
+  target_link_libraries(
+    pdcm_collection_coordinator_test
+    PRIVATE pdcm_collection GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_collection_coordinator_test)
+  pdcm_enable_sanitizers(pdcm_collection_coordinator_test)
+  gtest_discover_tests(
+    pdcm_collection_coordinator_test
+    TEST_PREFIX "product.collection."
   )
 endif()
