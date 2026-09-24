@@ -30,6 +30,7 @@ add_library(
   pdcm_common
   STATIC
     src/common/clock.cpp
+    src/common/health.cpp
     src/common/observation.cpp
     src/common/status.cpp
 )
