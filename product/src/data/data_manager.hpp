@@ -13,6 +13,7 @@
 
 #include "common/clock.hpp"
 #include "common/observation.hpp"
+#include "data/event_store.hpp"
 #include "semantic/semantic_catalog.hpp"
 
 namespace pdcm {
@@ -36,6 +37,8 @@ struct DataStoreLimits {
   std::size_t max_value_bytes{4096};
   std::size_t max_query_items{4096};
   std::size_t max_tombstones{1024};
+  std::size_t max_events{4096};
+  std::size_t max_event_bytes{4U * 1024U * 1024U};
 
   [[nodiscard]] Status validate() const;
 };
@@ -89,6 +92,10 @@ public:
   [[nodiscard]] std::size_t keyCount() const;
   [[nodiscard]] std::size_t storedBytes() const;
   [[nodiscard]] std::vector<EntityTombstone> tombstones() const;
+  [[nodiscard]] EventPublishResult publishEvent(const EventDraft &draft);
+  [[nodiscard]] EventSnapshot eventsSince(std::uint64_t sequence) const;
+  [[nodiscard]] std::size_t eventCount() const;
+  [[nodiscard]] std::size_t eventBytes() const;
 
 private:
   struct Entry {
@@ -122,6 +129,7 @@ private:
               ObservationStatus observation_status, const char *message);
 
   DataStoreLimits limits_;
+  EventStore event_store_;
   std::vector<std::unique_ptr<Shard>> shards_;
 
   mutable std::mutex state_mutex_;

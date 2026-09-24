@@ -78,7 +78,9 @@ add_library(
   pdcm_data
   STATIC
     src/data/data_manager.cpp
+    src/data/event_store.cpp
     src/data/query_engine.cpp
+    src/data/subscription_manager.cpp
 )
 add_library(PDCM::data ALIAS pdcm_data)
 target_include_directories(
@@ -392,5 +394,20 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_query_engine_test
     TEST_PREFIX "product.query."
+  )
+
+  add_executable(
+    pdcm_subscription_manager_test
+    tests/unit/subscription_manager_test.cpp
+  )
+  target_link_libraries(
+    pdcm_subscription_manager_test
+    PRIVATE pdcm_data GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_subscription_manager_test)
+  pdcm_enable_sanitizers(pdcm_subscription_manager_test)
+  gtest_discover_tests(
+    pdcm_subscription_manager_test
+    TEST_PREFIX "product.subscription."
   )
 endif()

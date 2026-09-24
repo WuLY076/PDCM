@@ -5,6 +5,7 @@
 #include <set>
 #include <stdexcept>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -45,14 +46,17 @@ Status DataStoreLimits::validate() const {
   if (shard_count == 0 || shard_count > 256 || max_keys == 0 ||
       max_history_samples_per_key == 0 || max_history_duration_ns <= 0 ||
       max_total_bytes == 0 || max_value_bytes == 0 || max_query_items == 0 ||
-      max_tombstones == 0 || max_value_bytes > max_total_bytes) {
+      max_tombstones == 0 || max_events == 0 || max_event_bytes == 0 ||
+      max_value_bytes > max_total_bytes) {
     return Status(PDCM_STATUS_INVALID_ARGUMENT,
                   "data store limits must be positive and bounded");
   }
   return Status::success();
 }
 
-DataManager::DataManager(DataStoreLimits limits) : limits_(limits) {
+DataManager::DataManager(DataStoreLimits limits)
+    : limits_(limits), event_store_(EventStoreLimits{limits.max_events,
+                                                     limits.max_event_bytes}) {
   const Status validation = limits_.validate();
   if (!validation.ok()) {
     throw std::invalid_argument(validation.message());
@@ -129,6 +133,10 @@ Status DataManager::activateCatalog(std::shared_ptr<const CatalogView> catalog,
   shard_locks.clear();
   state_lock.unlock();
   state_changed_.notify_all();
+  EventDraft event;
+  event.type = EventType::kCatalogChanged;
+  event.catalog_generation = catalog->generation();
+  (void)event_store_.publish(event);
   return Status::success();
 }
 
@@ -298,6 +306,20 @@ DataManager::commit(const std::vector<Observation> &observations) {
   shard_locks.clear();
   state_lock.unlock();
   state_changed_.notify_all();
+
+  for (const Observation &observation : observations) {
+    EventDraft event;
+    event.type = EventType::kMetricUpdate;
+    event.severity = observation.status == ObservationStatus::kValid
+                         ? EventSeverity::kInfo
+                         : EventSeverity::kWarning;
+    event.entity = observation.entity;
+    event.metric = observation.metric;
+    event.occurrence_time_ns = observation.observed_monotonic_time_ns;
+    event.catalog_generation = observation.catalog_generation;
+    event.payload = MetricUpdatePayload{observation.status, next_epoch};
+    (void)event_store_.publish(event);
+  }
   return result;
 }
 
@@ -519,6 +541,22 @@ std::size_t DataManager::shardIndex(const DataKey &key) const noexcept {
   return static_cast<std::size_t>(mixed % shards_.size());
 }
 
+EventPublishResult DataManager::publishEvent(const EventDraft &draft) {
+  return event_store_.publish(draft);
+}
+
+EventSnapshot DataManager::eventsSince(const std::uint64_t sequence) const {
+  return event_store_.since(sequence);
+}
+
+std::size_t DataManager::eventCount() const {
+  return event_store_.eventCount();
+}
+
+std::size_t DataManager::eventBytes() const {
+  return event_store_.storedBytes();
+}
+
 bool DataManager::valueMatches(const MetricDescriptor &descriptor,
                                const MetricValue &value) {
   switch (descriptor.value_type) {
@@ -588,4 +626,3 @@ Observation DataManager::unavailable(
 }
 
 } // namespace pdcm
-#include <type_traits>
