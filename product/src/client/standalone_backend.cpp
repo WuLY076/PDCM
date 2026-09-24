@@ -262,6 +262,19 @@ Status StandaloneBackend::version(BackendVersion *const version) const {
   return Status::success();
 }
 
+EntityListResult StandaloneBackend::entities(const EntityKind) const {
+  EntityListResult result;
+  result.status = Status(PDCM_STATUS_UNSUPPORTED,
+                         "standalone discovery routing is not initialized");
+  return result;
+}
+
+CapabilityQueryResult StandaloneBackend::capabilities(const EntityRef) const {
+  return {Status(PDCM_STATUS_UNSUPPORTED,
+                 "standalone capability routing is not initialized"),
+          std::nullopt};
+}
+
 Status StandaloneBackend::close() noexcept {
   std::lock_guard<std::mutex> lock(mutex_);
   if (closed_) {

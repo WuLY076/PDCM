@@ -13,6 +13,8 @@ if(NOT nm_status EQUAL 0)
 endif()
 
 set(allowed_symbols
+    pdcm_capability_query
+    pdcm_entity_list
     pdcm_close
     pdcm_open
     pdcm_version_get)

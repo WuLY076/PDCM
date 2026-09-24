@@ -188,6 +188,33 @@ const std::vector<CapabilitySet> &CatalogView::capabilitySets() const noexcept {
   return capability_sets_;
 }
 
+EntityListResult CatalogView::list(const EntityKind kind) const {
+  EntityListResult result;
+  result.detected_device_count = detected_device_count_;
+  result.catalog_generation = generation_;
+  if (kind != EntityKind::kUnknown && kind != EntityKind::kDevice) {
+    result.status =
+        Status(PDCM_STATUS_UNSUPPORTED, "entity kind is not public in P0");
+    return result;
+  }
+  if (topology_unsupported_) {
+    result.status = Status(PDCM_STATUS_UNSUPPORTED,
+                           "multiple manageable devices are unsupported in P0");
+    return result;
+  }
+
+  result.entities = entities_;
+  const bool partial =
+      std::any_of(result.entities.begin(), result.entities.end(),
+                  [](const EntityRecord &entity) {
+                    return entity.item_status != PDCM_STATUS_SUCCESS;
+                  });
+  result.status = partial
+                      ? Status(PDCM_STATUS_PARTIAL_RESULT,
+                               "entity inventory contains partial attributes")
+                      : Status::success();
+  return result;
+}
 EntityResolveResult CatalogView::resolve(const EntityRef entity) const {
   if (entity.kind != EntityKind::kDevice) {
     return {Status(PDCM_STATUS_INVALID_ARGUMENT,

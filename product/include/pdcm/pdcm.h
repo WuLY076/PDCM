@@ -121,6 +121,15 @@ PDCM_API pdcm_status_t pdcm_open(const pdcm_open_options_t *options,
 PDCM_API pdcm_status_t pdcm_version_get(pdcm_handle_t *handle,
                                         pdcm_version_info_t *out_version);
 
+PDCM_API pdcm_status_t pdcm_entity_list(pdcm_handle_t *handle,
+                                        const pdcm_entity_filter_t *filter,
+                                        pdcm_entity_info_t *entities,
+                                        size_t *inout_count);
+
+PDCM_API pdcm_status_t
+pdcm_capability_query(pdcm_handle_t *handle, const pdcm_entity_ref_t *entity,
+                      pdcm_capability_set_t *out_capabilities);
+
 PDCM_API pdcm_status_t pdcm_close(pdcm_handle_t **handle);
 
 PDCM_END_DECLS

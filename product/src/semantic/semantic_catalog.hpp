@@ -20,6 +20,7 @@ public:
   [[nodiscard]] const std::vector<EntityRecord> &entities() const noexcept;
   [[nodiscard]] const std::vector<CapabilitySet> &
   capabilitySets() const noexcept;
+  [[nodiscard]] EntityListResult list(EntityKind kind) const;
   [[nodiscard]] EntityResolveResult resolve(EntityRef entity) const;
   [[nodiscard]] CapabilityQueryResult capabilities(EntityRef entity) const;
 

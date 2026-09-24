@@ -179,6 +179,12 @@ struct CatalogCommitResult {
   bool committed{false};
   CatalogDiff diff;
 };
+struct EntityListResult {
+  Status status;
+  std::uint32_t detected_device_count{0};
+  std::uint64_t catalog_generation{0};
+  std::vector<EntityRecord> entities;
+};
 
 struct EntityResolveResult {
   Status status;

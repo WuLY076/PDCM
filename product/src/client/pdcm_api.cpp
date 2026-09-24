@@ -234,6 +234,148 @@ void fillLocalVersion(pdcm_version_info_t *const output) {
   output->provider_failure_phase = PDCM_PROVIDER_FAILURE_NONE;
   output->detail_status = PDCM_STATUS_SUCCESS;
 }
+pdcm::EntityKind toInternalEntityKind(const std::uint32_t kind) {
+  switch (kind) {
+  case PDCM_ENTITY_KIND_DEVICE:
+    return pdcm::EntityKind::kDevice;
+  case PDCM_ENTITY_KIND_NODE:
+    return pdcm::EntityKind::kNode;
+  case PDCM_ENTITY_KIND_UNKNOWN:
+    return pdcm::EntityKind::kUnknown;
+  default:
+    return pdcm::EntityKind::kUnknown;
+  }
+}
+
+bool validPublicEntityKind(const std::uint32_t kind) {
+  return kind == PDCM_ENTITY_KIND_UNKNOWN || kind == PDCM_ENTITY_KIND_DEVICE ||
+         kind == PDCM_ENTITY_KIND_NODE;
+}
+
+pdcm_status_t toInternalEntityRef(const pdcm_entity_ref_t *const source,
+                                  pdcm::EntityRef *const destination) {
+  if (source == nullptr || destination == nullptr ||
+      validateOutputHeader(source->header, sizeof(pdcm_entity_ref_t)) !=
+          PDCM_STATUS_SUCCESS ||
+      source->reserved != 0 || source->kind != PDCM_ENTITY_KIND_DEVICE ||
+      source->generation == 0) {
+    return PDCM_STATUS_INVALID_ARGUMENT;
+  }
+  destination->kind = pdcm::EntityKind::kDevice;
+  destination->id = pdcm::EntityId{source->pdcm_id};
+  destination->generation = source->generation;
+  return PDCM_STATUS_SUCCESS;
+}
+
+std::uint32_t toPublicEntityState(const pdcm::EntityState state) {
+  switch (state) {
+  case pdcm::EntityState::kReady:
+    return PDCM_ENTITY_STATE_READY;
+  case pdcm::EntityState::kError:
+    return PDCM_ENTITY_STATE_ERROR;
+  case pdcm::EntityState::kUnknown:
+    return PDCM_ENTITY_STATE_UNKNOWN;
+  }
+  return PDCM_ENTITY_STATE_UNKNOWN;
+}
+
+std::uint32_t toPublicObservationStatus(const pdcm::ObservationStatus status) {
+  switch (status) {
+  case pdcm::ObservationStatus::kValid:
+    return PDCM_OBSERVATION_VALID;
+  case pdcm::ObservationStatus::kStale:
+    return PDCM_OBSERVATION_STALE;
+  case pdcm::ObservationStatus::kNotAvailable:
+    return PDCM_OBSERVATION_NOT_AVAILABLE;
+  case pdcm::ObservationStatus::kUnsupported:
+    return PDCM_OBSERVATION_UNSUPPORTED;
+  case pdcm::ObservationStatus::kError:
+    return PDCM_OBSERVATION_ERROR;
+  }
+  return PDCM_OBSERVATION_ERROR;
+}
+
+std::uint32_t toPublicCapabilityKind(const pdcm::CapabilityKind kind) {
+  switch (kind) {
+  case pdcm::CapabilityKind::kMetricsCatalog:
+    return PDCM_CAPABILITY_METRICS_CATALOG;
+  case pdcm::CapabilityKind::kMetric:
+    return PDCM_CAPABILITY_METRIC;
+  case pdcm::CapabilityKind::kHealth:
+    return PDCM_CAPABILITY_HEALTH;
+  }
+  return 0;
+}
+
+std::uint32_t toPublicCapabilityReason(const pdcm::CapabilityReason reason) {
+  switch (reason) {
+  case pdcm::CapabilityReason::kSupported:
+    return PDCM_CAPABILITY_REASON_SUPPORTED;
+  case pdcm::CapabilityReason::kCatalogBlockedExternal:
+    return PDCM_CAPABILITY_REASON_CATALOG_BLOCKED_EXTERNAL;
+  case pdcm::CapabilityReason::kProviderUnsupported:
+    return PDCM_CAPABILITY_REASON_PROVIDER_UNSUPPORTED;
+  case pdcm::CapabilityReason::kDependencyMissing:
+    return PDCM_CAPABILITY_REASON_DEPENDENCY_MISSING;
+  case pdcm::CapabilityReason::kTemporarilyUnavailable:
+    return PDCM_CAPABILITY_REASON_TEMPORARILY_UNAVAILABLE;
+  case pdcm::CapabilityReason::kPermissionHidden:
+    return PDCM_CAPABILITY_REASON_PERMISSION_HIDDEN;
+  case pdcm::CapabilityReason::kPostP0Disabled:
+    return PDCM_CAPABILITY_REASON_POST_P0_DISABLED;
+  case pdcm::CapabilityReason::kTopologyUnsupported:
+    return PDCM_CAPABILITY_REASON_TOPOLOGY_UNSUPPORTED;
+  }
+  return PDCM_CAPABILITY_REASON_PROVIDER_UNSUPPORTED;
+}
+
+void fillEntityRef(const pdcm::EntityRef &source,
+                   pdcm_entity_ref_t *const destination) {
+  *destination = {};
+  destination->header.struct_size =
+      static_cast<std::uint32_t>(sizeof(pdcm_entity_ref_t));
+  destination->header.version = PDCM_STRUCT_VERSION_1;
+  destination->kind = static_cast<std::uint32_t>(source.kind);
+  destination->pdcm_id = source.id.value;
+  destination->generation = source.generation;
+}
+
+void fillEntityInfo(const pdcm::EntityRecord &source,
+                    pdcm_entity_info_t *const destination) {
+  *destination = {};
+  destination->header.struct_size =
+      static_cast<std::uint32_t>(sizeof(pdcm_entity_info_t));
+  destination->header.version = PDCM_STRUCT_VERSION_1;
+  fillEntityRef(source.ref, &destination->entity);
+  destination->state = toPublicEntityState(source.state);
+  destination->item_status = static_cast<std::int32_t>(source.item_status);
+  destination->native_id_status =
+      toPublicObservationStatus(source.native_id.status);
+  destination->pci_bdf_status =
+      toPublicObservationStatus(source.pci_bdf.status);
+  destination->pdrv_version_status =
+      toPublicObservationStatus(source.pdrv_version.status);
+  copyVersionString(source.native_id.value, destination->native_id,
+                    sizeof(destination->native_id));
+  copyVersionString(source.pci_bdf.value, destination->pci_bdf,
+                    sizeof(destination->pci_bdf));
+  copyVersionString(source.pdrv_version.value, destination->pdrv_version,
+                    sizeof(destination->pdrv_version));
+}
+
+void fillCapabilityItem(const pdcm::CapabilityItem &source,
+                        pdcm_capability_item_t *const destination) {
+  *destination = {};
+  destination->header.struct_size =
+      static_cast<std::uint32_t>(sizeof(pdcm_capability_item_t));
+  destination->header.version = PDCM_STRUCT_VERSION_1;
+  destination->kind = toPublicCapabilityKind(source.kind);
+  destination->id = source.id;
+  destination->supported = source.supported ? 1U : 0U;
+  destination->reason = toPublicCapabilityReason(source.reason);
+  destination->semantic_version = source.semantic_version;
+  destination->catalog_generation = source.catalog_generation;
+}
 
 class ActiveCall {
 public:
@@ -423,6 +565,129 @@ extern "C" PDCM_API pdcm_status_t pdcm_version_get(
         backend_version.core.detected_device_count;
     out_version->session_id = backend_version.session_id;
     out_version->catalog_generation = backend_version.core.catalog_generation;
+    return PDCM_STATUS_SUCCESS;
+  } catch (const std::bad_alloc &) {
+    return PDCM_STATUS_RESOURCE_EXHAUSTED;
+  } catch (...) {
+    return PDCM_STATUS_INTERNAL;
+  }
+}
+
+extern "C" PDCM_API pdcm_status_t pdcm_entity_list(
+    pdcm_handle_t *const handle, const pdcm_entity_filter_t *const filter,
+    pdcm_entity_info_t *const entities, std::size_t *const inout_count) {
+  try {
+    if (inout_count == nullptr) {
+      return PDCM_STATUS_INVALID_ARGUMENT;
+    }
+
+    pdcm::EntityKind kind = pdcm::EntityKind::kUnknown;
+    if (filter != nullptr) {
+      if (validateOutputHeader(filter->header, sizeof(pdcm_entity_filter_t)) !=
+              PDCM_STATUS_SUCCESS ||
+          filter->reserved != 0 || !validPublicEntityKind(filter->kind)) {
+        return PDCM_STATUS_INVALID_ARGUMENT;
+      }
+      kind = toInternalEntityKind(filter->kind);
+    }
+
+    ActiveCall call;
+    const pdcm_status_t acquired = call.acquire(handle);
+    if (acquired != PDCM_STATUS_SUCCESS) {
+      return acquired;
+    }
+
+    const std::size_t capacity = *inout_count;
+    const pdcm::EntityListResult result = call.backend()->entities(kind);
+    const pdcm_status_t status = result.status.code();
+    if (status == PDCM_STATUS_UNSUPPORTED) {
+      *inout_count = result.detected_device_count;
+      return status;
+    }
+    if (status != PDCM_STATUS_SUCCESS && status != PDCM_STATUS_PARTIAL_RESULT) {
+      *inout_count = 0;
+      return status;
+    }
+
+    *inout_count = result.entities.size();
+    if (entities == nullptr) {
+      return status;
+    }
+    if (capacity < result.entities.size()) {
+      return PDCM_STATUS_BUFFER_TOO_SMALL;
+    }
+    for (std::size_t index = 0; index < result.entities.size(); ++index) {
+      if (validateOutputHeader(entities[index].header,
+                               sizeof(pdcm_entity_info_t)) !=
+              PDCM_STATUS_SUCCESS ||
+          entities[index].reserved != 0) {
+        return PDCM_STATUS_INVALID_ARGUMENT;
+      }
+    }
+    for (std::size_t index = 0; index < result.entities.size(); ++index) {
+      fillEntityInfo(result.entities[index], &entities[index]);
+    }
+    return status;
+  } catch (const std::bad_alloc &) {
+    return PDCM_STATUS_RESOURCE_EXHAUSTED;
+  } catch (...) {
+    return PDCM_STATUS_INTERNAL;
+  }
+}
+
+extern "C" PDCM_API pdcm_status_t pdcm_capability_query(
+    pdcm_handle_t *const handle, const pdcm_entity_ref_t *const entity,
+    pdcm_capability_set_t *const out_capabilities) {
+  try {
+    if (out_capabilities == nullptr ||
+        validateOutputHeader(out_capabilities->header,
+                             sizeof(pdcm_capability_set_t)) !=
+            PDCM_STATUS_SUCCESS ||
+        (out_capabilities->items == nullptr &&
+         out_capabilities->item_capacity != 0)) {
+      return PDCM_STATUS_INVALID_ARGUMENT;
+    }
+
+    pdcm::EntityRef internal_entity;
+    const pdcm_status_t entity_status =
+        toInternalEntityRef(entity, &internal_entity);
+    if (entity_status != PDCM_STATUS_SUCCESS) {
+      return entity_status;
+    }
+
+    ActiveCall call;
+    const pdcm_status_t acquired = call.acquire(handle);
+    if (acquired != PDCM_STATUS_SUCCESS) {
+      return acquired;
+    }
+
+    const pdcm::CapabilityQueryResult result =
+        call.backend()->capabilities(internal_entity);
+    if (!result.status.ok() || !result.capabilities.has_value()) {
+      out_capabilities->item_count = 0;
+      return result.status.code();
+    }
+
+    const pdcm::CapabilitySet &source = *result.capabilities;
+    fillEntityRef(source.entity, &out_capabilities->entity);
+    out_capabilities->catalog_generation = source.catalog_generation;
+    out_capabilities->item_count = source.items.size();
+    if (source.items.size() > out_capabilities->item_capacity ||
+        (source.items.size() != 0 && out_capabilities->items == nullptr)) {
+      return PDCM_STATUS_BUFFER_TOO_SMALL;
+    }
+
+    for (std::size_t index = 0; index < source.items.size(); ++index) {
+      if (validateOutputHeader(out_capabilities->items[index].header,
+                               sizeof(pdcm_capability_item_t)) !=
+              PDCM_STATUS_SUCCESS ||
+          out_capabilities->items[index].reserved != 0) {
+        return PDCM_STATUS_INVALID_ARGUMENT;
+      }
+    }
+    for (std::size_t index = 0; index < source.items.size(); ++index) {
+      fillCapabilityItem(source.items[index], &out_capabilities->items[index]);
+    }
     return PDCM_STATUS_SUCCESS;
   } catch (const std::bad_alloc &) {
     return PDCM_STATUS_RESOURCE_EXHAUSTED;

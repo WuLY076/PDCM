@@ -77,6 +77,27 @@ Status EmbeddedBackend::version(BackendVersion *const version) const {
   version->session_id = session_id_;
   return Status::success();
 }
+EntityListResult EmbeddedBackend::entities(const EntityKind kind) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!started_ || closed_) {
+    EntityListResult result;
+    result.status =
+        Status(PDCM_STATUS_NOT_INITIALIZED, "embedded backend is not active");
+    return result;
+  }
+  return core_.entities(kind);
+}
+
+CapabilityQueryResult
+EmbeddedBackend::capabilities(const EntityRef entity) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!started_ || closed_) {
+    return {
+        Status(PDCM_STATUS_NOT_INITIALIZED, "embedded backend is not active"),
+        std::nullopt};
+  }
+  return core_.capabilities(entity);
+}
 
 Status EmbeddedBackend::close() noexcept {
   std::lock_guard<std::mutex> lock(mutex_);

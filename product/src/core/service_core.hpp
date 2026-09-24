@@ -59,6 +59,8 @@ public:
   [[nodiscard]] const RuntimeConfig &config() const noexcept;
   [[nodiscard]] std::shared_ptr<const CatalogView>
   catalogSnapshot() const noexcept;
+  [[nodiscard]] EntityListResult entities(EntityKind kind) const;
+  [[nodiscard]] CapabilityQueryResult capabilities(EntityRef entity) const;
 
 private:
   void publish(CoreState state, ProviderState provider_state,

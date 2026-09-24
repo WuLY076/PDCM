@@ -117,6 +117,45 @@ std::shared_ptr<const CatalogView>
 PdcmServiceCore::catalogSnapshot() const noexcept {
   return semantic_catalog_.snapshot();
 }
+EntityListResult PdcmServiceCore::entities(const EntityKind kind) const {
+  const CoreSnapshot core = snapshot();
+  const std::shared_ptr<const CatalogView> view = catalogSnapshot();
+  if (core.state == CoreState::kCreated || core.state == CoreState::kStarting ||
+      core.state == CoreState::kFailed || core.state == CoreState::kStopping ||
+      core.state == CoreState::kStopped) {
+    EntityListResult result;
+    result.status =
+        Status(PDCM_STATUS_NOT_INITIALIZED, "core is not serving discovery");
+    return result;
+  }
+  if (view->generation() == 0) {
+    EntityListResult result;
+    result.status =
+        Status(PDCM_STATUS_UNAVAILABLE, "no discovery snapshot is available");
+    result.detected_device_count = core.detected_device_count;
+    return result;
+  }
+  return view->list(kind);
+}
+
+CapabilityQueryResult
+PdcmServiceCore::capabilities(const EntityRef entity) const {
+  const CoreSnapshot core = snapshot();
+  const std::shared_ptr<const CatalogView> view = catalogSnapshot();
+  if (core.state == CoreState::kCreated || core.state == CoreState::kStarting ||
+      core.state == CoreState::kFailed || core.state == CoreState::kStopping ||
+      core.state == CoreState::kStopped) {
+    return {
+        Status(PDCM_STATUS_NOT_INITIALIZED, "core is not serving capabilities"),
+        std::nullopt};
+  }
+  if (view->generation() == 0) {
+    return {
+        Status(PDCM_STATUS_UNAVAILABLE, "no capability snapshot is available"),
+        std::nullopt};
+  }
+  return view->capabilities(entity);
+}
 
 const RuntimeConfig &PdcmServiceCore::config() const noexcept {
   return config_;

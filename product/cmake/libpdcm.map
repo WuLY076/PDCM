@@ -3,6 +3,8 @@ PDCM_0.1 {
     pdcm_open;
     pdcm_version_get;
     pdcm_close;
+    pdcm_entity_list;
+    pdcm_capability_query;
   local:
     *;
 };

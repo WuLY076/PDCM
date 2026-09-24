@@ -77,6 +77,18 @@ TEST(PublicApiTest, EmbeddedOpenReturnsDiagnosableDegradedHandle) {
   EXPECT_EQ(version.provider_load_state, PDCM_PROVIDER_LOAD_NOT_ATTEMPTED);
   EXPECT_EQ(version.detail_status, PDCM_STATUS_UNAVAILABLE);
   EXPECT_GT(version.session_id, 0);
+  std::size_t entity_count = 7;
+  EXPECT_EQ(pdcm_entity_list(handle, nullptr, nullptr, &entity_count),
+            PDCM_STATUS_UNAVAILABLE);
+  EXPECT_EQ(entity_count, 0);
+
+  pdcm_entity_ref_t entity = PDCM_ENTITY_REF_INIT;
+  entity.kind = PDCM_ENTITY_KIND_DEVICE;
+  entity.generation = 1;
+  pdcm_capability_set_t capabilities = PDCM_CAPABILITY_SET_INIT;
+  EXPECT_EQ(pdcm_capability_query(handle, &entity, &capabilities),
+            PDCM_STATUS_UNAVAILABLE);
+  EXPECT_EQ(capabilities.item_count, 0);
 
   EXPECT_EQ(pdcm_close(&handle), PDCM_STATUS_SUCCESS);
   EXPECT_EQ(handle, nullptr);

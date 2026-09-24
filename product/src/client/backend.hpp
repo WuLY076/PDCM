@@ -37,6 +37,9 @@ public:
 
   virtual Status start() = 0;
   virtual Status version(BackendVersion *version) const = 0;
+  virtual EntityListResult entities(EntityKind kind) const = 0;
+  virtual CapabilityQueryResult capabilities(EntityRef entity) const = 0;
+
   virtual Status close() noexcept = 0;
 
 protected:
