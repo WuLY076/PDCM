@@ -58,6 +58,21 @@ if(BUILD_TESTING)
   )
 
   add_executable(
+    pdcm_collection_roundtrip_test
+    tests/collection_roundtrip_test.cpp
+  )
+  target_link_libraries(
+    pdcm_collection_roundtrip_test
+    PRIVATE pdcm_mock_provider PDCM::collection GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_collection_roundtrip_test)
+  pdcm_enable_sanitizers(pdcm_collection_roundtrip_test)
+  gtest_discover_tests(
+    pdcm_collection_roundtrip_test
+    TEST_PREFIX "testkit.collection_roundtrip."
+  )
+
+  add_executable(
     pdcm_core_lifecycle_test
     tests/core_lifecycle_test.cpp
   )
