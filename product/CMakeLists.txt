@@ -57,6 +57,24 @@ target_include_directories(
 target_link_libraries(pdcm_provider_contract INTERFACE pdcm_common)
 
 add_library(
+  pdcm_semantic
+  STATIC
+    src/semantic/semantic_catalog.cpp
+)
+add_library(PDCM::semantic ALIAS pdcm_semantic)
+target_include_directories(
+  pdcm_semantic
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+)
+target_link_libraries(
+  pdcm_semantic
+  PUBLIC pdcm_common pdcm_provider_contract
+)
+pdcm_enable_warnings(pdcm_semantic)
+pdcm_enable_sanitizers(pdcm_semantic)
+
+add_library(
   pdcm_core
   STATIC
     src/core/runtime_config.cpp
@@ -72,7 +90,7 @@ target_include_directories(
 )
 target_link_libraries(
   pdcm_core
-  PUBLIC pdcm_common pdcm_provider_contract
+  PUBLIC pdcm_common pdcm_provider_contract pdcm_semantic
 )
 pdcm_enable_warnings(pdcm_core)
 pdcm_enable_sanitizers(pdcm_core)
@@ -249,6 +267,21 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_foundation_test
     TEST_PREFIX "product.foundation."
+  )
+
+  add_executable(
+    pdcm_semantic_catalog_test
+    tests/unit/semantic_catalog_test.cpp
+  )
+  target_link_libraries(
+    pdcm_semantic_catalog_test
+    PRIVATE pdcm_semantic GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_semantic_catalog_test)
+  pdcm_enable_sanitizers(pdcm_semantic_catalog_test)
+  gtest_discover_tests(
+    pdcm_semantic_catalog_test
+    TEST_PREFIX "product.semantic."
   )
 
   add_executable(

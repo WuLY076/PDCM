@@ -62,6 +62,7 @@ struct ProviderEntity {
   std::string stable_native_id;
   std::string pci_bdf;
   std::string pdrv_version;
+  std::string incarnation;
   ProviderEntityState state{ProviderEntityState::kUnknown};
   bool manageable{false};
 };
