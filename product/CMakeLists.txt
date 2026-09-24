@@ -75,6 +75,25 @@ pdcm_enable_warnings(pdcm_semantic)
 pdcm_enable_sanitizers(pdcm_semantic)
 
 add_library(
+  pdcm_data
+  STATIC
+    src/data/data_manager.cpp
+    src/data/query_engine.cpp
+)
+add_library(PDCM::data ALIAS pdcm_data)
+target_include_directories(
+  pdcm_data
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+)
+target_link_libraries(
+  pdcm_data
+  PUBLIC pdcm_common pdcm_semantic
+)
+pdcm_enable_warnings(pdcm_data)
+pdcm_enable_sanitizers(pdcm_data)
+
+add_library(
   pdcm_core
   STATIC
     src/core/runtime_config.cpp
@@ -344,25 +363,6 @@ if(BUILD_TESTING)
     pdcm_session_handshake_test
     TEST_PREFIX "product.ipc.session_handshake."
   )
-endif()
-
-add_library(
-  pdcm_data
-  STATIC
-    src/data/data_manager.cpp
-)
-add_library(PDCM::data ALIAS pdcm_data)
-target_include_directories(
-  pdcm_data
-  PUBLIC
-    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
-)
-target_link_libraries(
-  pdcm_data
-  PUBLIC pdcm_common pdcm_semantic
-)
-pdcm_enable_warnings(pdcm_data)
-pdcm_enable_sanitizers(pdcm_data)
 
   add_executable(
     pdcm_data_manager_test
@@ -378,3 +378,19 @@ pdcm_enable_sanitizers(pdcm_data)
     pdcm_data_manager_test
     TEST_PREFIX "product.data."
   )
+
+  add_executable(
+    pdcm_query_engine_test
+    tests/unit/query_engine_test.cpp
+  )
+  target_link_libraries(
+    pdcm_query_engine_test
+    PRIVATE pdcm_data GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_query_engine_test)
+  pdcm_enable_sanitizers(pdcm_query_engine_test)
+  gtest_discover_tests(
+    pdcm_query_engine_test
+    TEST_PREFIX "product.query."
+  )
+endif()

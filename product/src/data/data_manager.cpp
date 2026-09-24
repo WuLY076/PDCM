@@ -443,6 +443,16 @@ DataHistoryResult DataManager::history(const DataKey &key) const {
   return result;
 }
 
+std::optional<MetricDescriptor>
+DataManager::metricDescriptor(const MetricId metric) const {
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  const auto descriptor = catalog_.metrics.find(metric.value);
+  if (descriptor == catalog_.metrics.end()) {
+    return std::nullopt;
+  }
+  return descriptor->second;
+}
+
 Status DataManager::waitForEpoch(const std::uint64_t epoch,
                                  const MonotonicTime deadline) const {
   if (epoch == 0) {

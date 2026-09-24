@@ -79,6 +79,8 @@ public:
              std::int64_t now_monotonic_ns,
              std::uint64_t required_catalog_generation = 0) const;
   [[nodiscard]] DataHistoryResult history(const DataKey &key) const;
+  [[nodiscard]] std::optional<MetricDescriptor>
+  metricDescriptor(MetricId metric) const;
   [[nodiscard]] Status waitForEpoch(std::uint64_t epoch,
                                     MonotonicTime deadline) const;
 
