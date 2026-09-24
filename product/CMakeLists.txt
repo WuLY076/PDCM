@@ -96,6 +96,24 @@ pdcm_enable_warnings(pdcm_data)
 pdcm_enable_sanitizers(pdcm_data)
 
 add_library(
+  pdcm_collection
+  STATIC
+    src/collection/watch_manager.cpp
+)
+add_library(PDCM::collection ALIAS pdcm_collection)
+target_include_directories(
+  pdcm_collection
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+)
+target_link_libraries(
+  pdcm_collection
+  PUBLIC pdcm_common pdcm_provider_contract pdcm_semantic pdcm_data
+)
+pdcm_enable_warnings(pdcm_collection)
+pdcm_enable_sanitizers(pdcm_collection)
+
+add_library(
   pdcm_core
   STATIC
     src/core/runtime_config.cpp
@@ -409,5 +427,20 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_subscription_manager_test
     TEST_PREFIX "product.subscription."
+  )
+
+  add_executable(
+    pdcm_watch_manager_test
+    tests/unit/watch_manager_test.cpp
+  )
+  target_link_libraries(
+    pdcm_watch_manager_test
+    PRIVATE pdcm_collection GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_watch_manager_test)
+  pdcm_enable_sanitizers(pdcm_watch_manager_test)
+  gtest_discover_tests(
+    pdcm_watch_manager_test
+    TEST_PREFIX "product.watch."
   )
 endif()
