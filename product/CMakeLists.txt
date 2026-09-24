@@ -120,6 +120,7 @@ add_library(
     src/ipc/frame.cpp
     src/ipc/handshake.cpp
     src/ipc/local_api_server.cpp
+    src/ipc/request_router.cpp
     src/ipc/unix_socket.cpp
 )
 add_library(PDCM::ipc ALIAS pdcm_ipc)

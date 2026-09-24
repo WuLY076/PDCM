@@ -44,7 +44,7 @@ LocalApiServer::LocalApiServer(std::string endpoint,
                                PdcmServiceCore *const core,
                                const ResourceLimits limits)
     : endpoint_(std::move(endpoint)), core_(core), limits_(limits),
-      sessions_(limits), handshake_(&sessions_) {}
+      sessions_(limits), handshake_(&sessions_), router_(core) {}
 
 LocalApiServer::~LocalApiServer() { (void)stop(); }
 
@@ -319,26 +319,29 @@ void LocalApiServer::handleConnection(const int fd) noexcept {
       }
 
       for (const Frame &frame : frames) {
+        Frame response;
         if (handshake_complete) {
-          close_connection = true;
-          break;
+          RequestRouteResult result = router_.route(frame);
+          response = std::move(result.response);
+          close_connection = result.close_connection;
+        } else {
+          HandshakeResult result =
+              handshake_.handle(frame, core_->snapshot(), limits_, peer);
+          response = std::move(result.response);
+          session_id = result.session_id;
+          handshake_complete = result.status.ok() && session_id.has_value();
+          close_connection = result.close_connection;
         }
 
-        HandshakeResult result =
-            handshake_.handle(frame, core_->snapshot(), limits_, peer);
         std::vector<std::uint8_t> response_bytes;
-        Status encoded = encodeFrame(result.response, limits_.max_frame_bytes,
-                                     &response_bytes);
+        Status encoded =
+            encodeFrame(response, limits_.max_frame_bytes, &response_bytes);
         if (!encoded.ok() || !writeAll(fd, response_bytes.data(),
                                        response_bytes.size(), writeDeadline())
                                   .ok()) {
           close_connection = true;
           break;
         }
-
-        session_id = result.session_id;
-        handshake_complete = result.status.ok() && session_id.has_value();
-        close_connection = result.close_connection;
       }
     }
   } catch (...) {

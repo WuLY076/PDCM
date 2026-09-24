@@ -77,3 +77,91 @@ message VersionResponse {
   ProviderState provider_state = 5;
   uint64 catalog_generation = 6;
 }
+enum EntityKind {
+  ENTITY_KIND_UNSPECIFIED = 0;
+  ENTITY_KIND_DEVICE = 1;
+  ENTITY_KIND_NODE = 2;
+}
+
+enum EntityState {
+  ENTITY_STATE_UNSPECIFIED = 0;
+  ENTITY_STATE_READY = 1;
+  ENTITY_STATE_ERROR = 2;
+}
+
+enum ObservationStatus {
+  OBSERVATION_STATUS_UNSPECIFIED = 0;
+  OBSERVATION_STATUS_VALID = 1;
+  OBSERVATION_STATUS_STALE = 2;
+  OBSERVATION_STATUS_NOT_AVAILABLE = 3;
+  OBSERVATION_STATUS_UNSUPPORTED = 4;
+  OBSERVATION_STATUS_ERROR = 5;
+}
+
+enum CapabilityKind {
+  CAPABILITY_KIND_UNSPECIFIED = 0;
+  CAPABILITY_KIND_METRICS_CATALOG = 1;
+  CAPABILITY_KIND_METRIC = 2;
+  CAPABILITY_KIND_HEALTH = 3;
+}
+
+enum CapabilityReason {
+  CAPABILITY_REASON_UNSPECIFIED = 0;
+  CAPABILITY_REASON_SUPPORTED = 1;
+  CAPABILITY_REASON_CATALOG_BLOCKED_EXTERNAL = 2;
+  CAPABILITY_REASON_PROVIDER_UNSUPPORTED = 3;
+  CAPABILITY_REASON_DEPENDENCY_MISSING = 4;
+  CAPABILITY_REASON_TEMPORARILY_UNAVAILABLE = 5;
+  CAPABILITY_REASON_PERMISSION_HIDDEN = 6;
+  CAPABILITY_REASON_POST_P0_DISABLED = 7;
+  CAPABILITY_REASON_TOPOLOGY_UNSUPPORTED = 8;
+}
+
+message EntityRef {
+  EntityKind kind = 1;
+  uint64 pdcm_id = 2;
+  uint64 generation = 3;
+}
+
+message EntityListRequest {
+  EntityKind kind = 1;
+}
+
+message EntityInfo {
+  EntityRef entity = 1;
+  EntityState state = 2;
+  int32 item_status = 3;
+  ObservationStatus native_id_status = 4;
+  ObservationStatus pci_bdf_status = 5;
+  ObservationStatus pdrv_version_status = 6;
+  string native_id = 7;
+  string pci_bdf = 8;
+  string pdrv_version = 9;
+}
+
+message EntityListResponse {
+  int32 status = 1;
+  uint32 detected_device_count = 2;
+  uint64 catalog_generation = 3;
+  repeated EntityInfo entities = 4;
+}
+
+message CapabilityQueryRequest {
+  EntityRef entity = 1;
+}
+
+message CapabilityItem {
+  CapabilityKind kind = 1;
+  uint32 id = 2;
+  bool supported = 3;
+  CapabilityReason reason = 4;
+  uint32 semantic_version = 5;
+  uint64 catalog_generation = 6;
+}
+
+message CapabilityQueryResponse {
+  int32 status = 1;
+  EntityRef entity = 2;
+  uint64 catalog_generation = 3;
+  repeated CapabilityItem items = 4;
+}

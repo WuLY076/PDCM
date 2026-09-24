@@ -128,6 +128,55 @@ TEST(StandaloneRoundTripTest, PublicApiHandshakesWithMockDaemonProcess) {
   EXPECT_EQ(version.detected_device_count, 1);
   EXPECT_EQ(version.catalog_generation, 1);
   EXPECT_GT(version.session_id, 0);
+  std::size_t entity_count = 0;
+  ASSERT_EQ(pdcm_entity_list(handle.value, nullptr, nullptr, &entity_count),
+            PDCM_STATUS_SUCCESS);
+  ASSERT_EQ(entity_count, 1);
+
+  pdcm_entity_info_t entity = PDCM_ENTITY_INFO_INIT;
+  std::size_t entity_capacity = 1;
+  ASSERT_EQ(pdcm_entity_list(handle.value, nullptr, &entity, &entity_capacity),
+            PDCM_STATUS_SUCCESS);
+  ASSERT_EQ(entity_capacity, 1);
+  EXPECT_EQ(entity.entity.kind, PDCM_ENTITY_KIND_DEVICE);
+  EXPECT_EQ(entity.entity.pdcm_id, 0);
+  EXPECT_EQ(entity.entity.generation, 1);
+  EXPECT_EQ(entity.state, PDCM_ENTITY_STATE_READY);
+  EXPECT_EQ(entity.item_status, PDCM_STATUS_SUCCESS);
+  EXPECT_EQ(entity.native_id_status, PDCM_OBSERVATION_VALID);
+  EXPECT_STREQ(entity.native_id, "mock-device-0");
+  EXPECT_STREQ(entity.pci_bdf, "0000:01:00.0");
+  EXPECT_STREQ(entity.pdrv_version, "mock-pdrv-1.0");
+
+  pdcm_capability_set_t capabilities = PDCM_CAPABILITY_SET_INIT;
+  ASSERT_EQ(pdcm_capability_query(handle.value, &entity.entity, &capabilities),
+            PDCM_STATUS_BUFFER_TOO_SMALL);
+  ASSERT_EQ(capabilities.item_count, 2);
+  EXPECT_EQ(capabilities.catalog_generation, 1);
+
+  std::array<pdcm_capability_item_t, 2> items{};
+  for (pdcm_capability_item_t &item : items) {
+    item.header.struct_size = sizeof(pdcm_capability_item_t);
+    item.header.version = PDCM_STRUCT_VERSION_1;
+  }
+  capabilities.items = items.data();
+  capabilities.item_capacity = items.size();
+  ASSERT_EQ(pdcm_capability_query(handle.value, &entity.entity, &capabilities),
+            PDCM_STATUS_SUCCESS);
+  ASSERT_EQ(capabilities.item_count, 2);
+  EXPECT_EQ(items[0].kind, PDCM_CAPABILITY_METRICS_CATALOG);
+  EXPECT_EQ(items[0].supported, 0);
+  EXPECT_EQ(items[0].reason, PDCM_CAPABILITY_REASON_CATALOG_BLOCKED_EXTERNAL);
+  EXPECT_EQ(items[1].kind, PDCM_CAPABILITY_HEALTH);
+  EXPECT_EQ(items[1].supported, 1);
+  EXPECT_EQ(items[1].reason, PDCM_CAPABILITY_REASON_SUPPORTED);
+
+  pdcm_entity_ref_t stale = entity.entity;
+  ++stale.generation;
+  pdcm_capability_set_t stale_result = PDCM_CAPABILITY_SET_INIT;
+  EXPECT_EQ(pdcm_capability_query(handle.value, &stale, &stale_result),
+            PDCM_STATUS_STALE_GENERATION);
+  EXPECT_EQ(stale_result.item_count, 0);
 
   ASSERT_EQ(pdcm_close(&handle.value), PDCM_STATUS_SUCCESS);
   EXPECT_TRUE(daemon.waitForSuccess());

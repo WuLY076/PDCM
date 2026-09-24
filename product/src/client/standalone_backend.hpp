@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <string>
 
@@ -24,12 +25,17 @@ public:
   Status close() noexcept override;
 
 private:
+  Status exchangeLocked(ipc::MessageType request_type,
+                        const std::string &request_payload,
+                        ipc::MessageType expected_response_type,
+                        ipc::Frame *response) const;
   std::string endpoint_;
   std::chrono::milliseconds deadline_;
   std::size_t max_frame_bytes_;
 
   mutable std::mutex mutex_;
   ipc::UniqueFd socket_;
+  mutable std::uint64_t next_request_id_{2};
   BackendVersion version_;
   bool started_{false};
   bool closed_{false};

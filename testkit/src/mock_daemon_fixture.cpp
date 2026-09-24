@@ -6,6 +6,7 @@
 #include "core/service_core.hpp"
 #include "ipc/local_api_server.hpp"
 #include "pdcm/testkit/manual_clock.hpp"
+#include "pdcm/testkit/mock_metric_ids.hpp"
 #include "pdcm/testkit/mock_provider.hpp"
 
 int main(const int argc, char **const argv) {
@@ -19,10 +20,14 @@ int main(const int argc, char **const argv) {
 
   pdcm::RuntimeConfig config;
   config.target = pdcm::TargetKind::kFpga;
+  pdcm::TargetCatalog target_catalog =
+      pdcm::TargetCatalog::blocked(config.target);
+  target_catalog.health.front().provider_data_id =
+      pdcm::testkit::kTestHeartbeatEvidenceId;
   pdcm::PdcmServiceCore core(
       config,
       std::make_unique<pdcm::testkit::MockProvider>(provider_config, clock),
-      clock);
+      clock, target_catalog);
   if (!core.start().ok()) {
     return 3;
   }

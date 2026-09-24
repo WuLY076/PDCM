@@ -13,6 +13,7 @@
 #include "core/service_core.hpp"
 #include "core/session_manager.hpp"
 #include "ipc/handshake.hpp"
+#include "ipc/request_router.hpp"
 #include "ipc/unix_socket.hpp"
 
 namespace pdcm::ipc {
@@ -48,6 +49,7 @@ private:
   ResourceLimits limits_;
   SessionManager sessions_;
   HandshakeHandler handshake_;
+  RequestRouter router_;
 
   mutable std::mutex state_mutex_;
   UniqueFd listen_socket_;
