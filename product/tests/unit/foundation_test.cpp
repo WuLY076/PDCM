@@ -29,6 +29,7 @@ TEST(ObservationTest, EnforcesStatusAndValueInvariants) {
   Observation valid;
   valid.entity = EntityRef{EntityKind::kDevice, EntityId{0}, 1};
   valid.metric = MetricId{1};
+  valid.metric_semantic_version = 1;
   valid.value = std::uint64_t{42};
   valid.status = ObservationStatus::kValid;
   valid.observed_monotonic_time_ns = 10;
@@ -40,10 +41,14 @@ TEST(ObservationTest, EnforcesStatusAndValueInvariants) {
   EXPECT_EQ(validateObservation(failed).code(), PDCM_STATUS_INVALID_ARGUMENT);
 
   failed.value.reset();
+  failed.error.status = Status(PDCM_STATUS_UNAVAILABLE, "provider read failed");
   EXPECT_TRUE(validateObservation(failed).ok());
 
   Observation stale = valid;
   stale.status = ObservationStatus::kStale;
+  stale.stale_age_ns = 5;
+  stale.latest_failure = ErrorMetadata{
+      Status(PDCM_STATUS_UNAVAILABLE, "provider read failed"), 0, true};
   EXPECT_TRUE(validateObservation(stale).ok());
 }
 
