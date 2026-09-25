@@ -278,9 +278,25 @@ endif()
 pdcm_enable_warnings(pdcm)
 pdcm_enable_sanitizers(pdcm)
 
+add_library(pdcm_cli_core STATIC src/cli/cli.cpp)
+target_include_directories(
+  pdcm_cli_core
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+)
+target_link_libraries(pdcm_cli_core PUBLIC PDCM::pdcm)
+pdcm_enable_warnings(pdcm_cli_core)
+pdcm_enable_sanitizers(pdcm_cli_core)
+
+add_executable(pdcm_cli src/cli/main.cpp)
+set_target_properties(pdcm_cli PROPERTIES OUTPUT_NAME pdcm-cli)
+target_link_libraries(pdcm_cli PRIVATE pdcm_cli_core)
+pdcm_enable_warnings(pdcm_cli)
+pdcm_enable_sanitizers(pdcm_cli)
+
 install(
-  TARGETS pdcm
+  TARGETS pdcm pdcm_cli
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 
 install(
@@ -292,6 +308,18 @@ install(
 if(BUILD_TESTING)
   find_package(GTest 1.14 CONFIG REQUIRED)
   include(GoogleTest)
+
+  add_executable(pdcm_cli_test tests/unit/cli_test.cpp)
+  target_link_libraries(
+    pdcm_cli_test
+    PRIVATE pdcm_cli_core GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_cli_test)
+  pdcm_enable_sanitizers(pdcm_cli_test)
+  gtest_discover_tests(
+    pdcm_cli_test
+    TEST_PREFIX "product.cli."
+  )
 
   add_executable(
     pdcm_public_headers_c_test
