@@ -377,6 +377,48 @@ void fillCapabilityItem(const pdcm::CapabilityItem &source,
   destination->catalog_generation = source.catalog_generation;
 }
 
+std::uint32_t toPublicHealthState(const pdcm::HealthState state) {
+  switch (state) {
+  case pdcm::HealthState::kHealthy:
+    return PDCM_HEALTH_STATE_HEALTHY;
+  case pdcm::HealthState::kUnknown:
+    return PDCM_HEALTH_STATE_UNKNOWN;
+  case pdcm::HealthState::kWarning:
+    return PDCM_HEALTH_STATE_WARNING;
+  case pdcm::HealthState::kError:
+    return PDCM_HEALTH_STATE_ERROR;
+  }
+  return PDCM_HEALTH_STATE_UNKNOWN;
+}
+
+void fillHealthResult(const pdcm::HealthResult &source,
+                      pdcm_health_result_t *const destination) {
+  *destination = {};
+  destination->header.struct_size =
+      static_cast<std::uint32_t>(sizeof(pdcm_health_result_t));
+  destination->header.version = PDCM_STRUCT_VERSION_1;
+  fillEntityRef(source.entity, &destination->entity);
+  destination->subsystem_id = source.subsystem_id;
+  destination->state = toPublicHealthState(source.state);
+  destination->item_status = toPublicObservationStatus(source.item_status);
+  destination->code = static_cast<std::uint32_t>(source.code);
+  destination->catalog_generation = source.catalog_generation;
+  destination->evaluated_monotonic_time_ns =
+      source.evaluated_monotonic_time_ns;
+  destination->evidence_age_ns = source.evidence_age_ns;
+  if (!source.evidence.empty()) {
+    destination->evidence_id = source.evidence.front().evidence_id;
+    destination->sequence_or_token = source.evidence.front().sequence_or_token;
+    copyVersionString(source.evidence.front().source.provider,
+                      destination->source, sizeof(destination->source));
+  }
+  if (!source.limitations.empty()) {
+    copyVersionString(source.limitations.front().detail,
+                      destination->limitation,
+                      sizeof(destination->limitation));
+  }
+}
+
 class ActiveCall {
 public:
   ActiveCall() = default;
@@ -689,6 +731,54 @@ extern "C" PDCM_API pdcm_status_t pdcm_capability_query(
       fillCapabilityItem(source.items[index], &out_capabilities->items[index]);
     }
     return PDCM_STATUS_SUCCESS;
+  } catch (const std::bad_alloc &) {
+    return PDCM_STATUS_RESOURCE_EXHAUSTED;
+  } catch (...) {
+    return PDCM_STATUS_INTERNAL;
+  }
+}
+
+extern "C" PDCM_API pdcm_status_t
+pdcm_health_query(pdcm_handle_t *const handle,
+                  const pdcm_health_request_t *const request,
+                  pdcm_health_result_t *const out_result) {
+  try {
+    if (request == nullptr || out_result == nullptr ||
+        validateOutputHeader(request->header,
+                             sizeof(pdcm_health_request_t)) !=
+            PDCM_STATUS_SUCCESS ||
+        validateOutputHeader(out_result->header,
+                             sizeof(pdcm_health_result_t)) !=
+            PDCM_STATUS_SUCCESS ||
+        request->reserved != 0 || request->subsystem_id == 0) {
+      return PDCM_STATUS_INVALID_ARGUMENT;
+    }
+
+    pdcm::EntityRef entity;
+    const pdcm_status_t entity_status =
+        toInternalEntityRef(&request->entity, &entity);
+    if (entity_status != PDCM_STATUS_SUCCESS) {
+      return entity_status;
+    }
+
+    ActiveCall call;
+    const pdcm_status_t acquired = call.acquire(handle);
+    if (acquired != PDCM_STATUS_SUCCESS) {
+      return acquired;
+    }
+
+    const pdcm::HealthQueryResult result = call.backend()->health(
+        {entity, request->subsystem_id, request->catalog_generation,
+         request->max_age_ns});
+    if (result.status.code() != PDCM_STATUS_SUCCESS &&
+        result.status.code() != PDCM_STATUS_PARTIAL_RESULT) {
+      return result.status.code();
+    }
+    if (!result.item.has_value()) {
+      return PDCM_STATUS_INTERNAL;
+    }
+    fillHealthResult(*result.item, out_result);
+    return result.status.code();
   } catch (const std::bad_alloc &) {
     return PDCM_STATUS_RESOURCE_EXHAUSTED;
   } catch (...) {

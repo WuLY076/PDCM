@@ -5,6 +5,7 @@ PDCM_0.1 {
     pdcm_close;
     pdcm_entity_list;
     pdcm_capability_query;
+    pdcm_health_query;
   local:
     *;
 };

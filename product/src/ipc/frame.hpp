@@ -23,6 +23,8 @@ enum class MessageType : std::uint16_t {
   kEntityListResponse = 7,
   kCapabilityQueryRequest = 8,
   kCapabilityQueryResponse = 9,
+  kHealthQueryRequest = 10,
+  kHealthQueryResponse = 11,
 };
 
 struct Frame {

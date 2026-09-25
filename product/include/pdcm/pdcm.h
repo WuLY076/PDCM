@@ -130,6 +130,10 @@ PDCM_API pdcm_status_t
 pdcm_capability_query(pdcm_handle_t *handle, const pdcm_entity_ref_t *entity,
                       pdcm_capability_set_t *out_capabilities);
 
+PDCM_API pdcm_status_t
+pdcm_health_query(pdcm_handle_t *handle, const pdcm_health_request_t *request,
+                  pdcm_health_result_t *out_result);
+
 PDCM_API pdcm_status_t pdcm_close(pdcm_handle_t **handle);
 
 PDCM_END_DECLS

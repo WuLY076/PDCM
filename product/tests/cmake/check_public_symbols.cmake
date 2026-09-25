@@ -15,6 +15,7 @@ endif()
 set(allowed_symbols
     pdcm_capability_query
     pdcm_entity_list
+    pdcm_health_query
     pdcm_close
     pdcm_open
     pdcm_version_get)

@@ -19,6 +19,8 @@ int main(void) {
   pdcm_entity_info_t info = PDCM_ENTITY_INFO_INIT;
   pdcm_capability_item_t item = PDCM_CAPABILITY_ITEM_INIT;
   pdcm_capability_set_t capabilities = PDCM_CAPABILITY_SET_INIT;
+  pdcm_health_request_t health_request = PDCM_HEALTH_REQUEST_INIT;
+  pdcm_health_result_t health = PDCM_HEALTH_RESULT_INIT;
   capabilities.items = &item;
   capabilities.item_capacity = 1u;
   pdcm_entity_ref_t entity = {
@@ -34,6 +36,9 @@ int main(void) {
                  version.header.struct_size == sizeof(pdcm_version_info_t) &&
                  filter.header.struct_size == sizeof(pdcm_entity_filter_t) &&
                  info.header.struct_size == sizeof(pdcm_entity_info_t) &&
+                 health_request.subsystem_id ==
+                     PDCM_HEALTH_SUBSYSTEM_FIRMWARE_HEARTBEAT &&
+                 health.header.struct_size == sizeof(pdcm_health_result_t) &&
                  capabilities.item_capacity == 1u
              ? 0
              : 1;

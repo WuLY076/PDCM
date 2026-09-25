@@ -151,4 +151,30 @@ if(BUILD_TESTING)
     pdcm_standalone_roundtrip_test
     TEST_PREFIX "testkit.standalone_roundtrip."
   )
+
+  add_executable(
+    pdcm_cli_roundtrip_test
+    tests/cli_roundtrip_test.cpp
+  )
+  add_dependencies(
+    pdcm_cli_roundtrip_test
+    pdcm_mock_daemon_fixture
+    pdcm_cli
+  )
+  target_compile_definitions(
+    pdcm_cli_roundtrip_test
+    PRIVATE
+      PDCM_MOCK_DAEMON_PATH="$<TARGET_FILE:pdcm_mock_daemon_fixture>"
+      PDCM_CLI_PATH="$<TARGET_FILE:pdcm_cli>"
+  )
+  target_link_libraries(
+    pdcm_cli_roundtrip_test
+    PRIVATE GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_cli_roundtrip_test)
+  pdcm_enable_sanitizers(pdcm_cli_roundtrip_test)
+  gtest_discover_tests(
+    pdcm_cli_roundtrip_test
+    TEST_PREFIX "testkit.cli_roundtrip."
+  )
 endif()

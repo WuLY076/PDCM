@@ -8,6 +8,8 @@
 #include "common/clock.hpp"
 #include "common/status.hpp"
 #include "core/runtime_config.hpp"
+#include "data/data_manager.hpp"
+#include "metrics/metrics_manager.hpp"
 #include "provider/provider.hpp"
 #include "provider/provider_manager.hpp"
 #include "semantic/semantic_catalog.hpp"
@@ -61,6 +63,7 @@ public:
   catalogSnapshot() const noexcept;
   [[nodiscard]] EntityListResult entities(EntityKind kind) const;
   [[nodiscard]] CapabilityQueryResult capabilities(EntityRef entity) const;
+  [[nodiscard]] HealthQueryResult health(const HealthRequest &request) const;
 
 private:
   void publish(CoreState state, ProviderState provider_state,
@@ -71,9 +74,11 @@ private:
   RuntimeConfig config_;
   ProviderManager provider_manager_;
   std::shared_ptr<const Clock> clock_;
-
+  TargetCatalog target_catalog_;
   mutable std::mutex state_mutex_;
   SemanticCatalog semantic_catalog_;
+  DataManager data_manager_;
+  MetricsManager metrics_manager_;
   CoreSnapshot snapshot_;
 };
 

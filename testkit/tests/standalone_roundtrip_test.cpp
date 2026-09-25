@@ -171,6 +171,21 @@ TEST(StandaloneRoundTripTest, PublicApiHandshakesWithMockDaemonProcess) {
   EXPECT_EQ(items[1].supported, 1);
   EXPECT_EQ(items[1].reason, PDCM_CAPABILITY_REASON_SUPPORTED);
 
+  pdcm_health_request_t health_request = PDCM_HEALTH_REQUEST_INIT;
+  health_request.entity = entity.entity;
+  health_request.catalog_generation = capabilities.catalog_generation;
+  pdcm_health_result_t health = PDCM_HEALTH_RESULT_INIT;
+  EXPECT_EQ(pdcm_health_query(handle.value, &health_request, &health),
+            PDCM_STATUS_PARTIAL_RESULT);
+  EXPECT_EQ(health.subsystem_id,
+            PDCM_HEALTH_SUBSYSTEM_FIRMWARE_HEARTBEAT);
+  EXPECT_EQ(health.state, PDCM_HEALTH_STATE_UNKNOWN);
+  EXPECT_EQ(health.item_status, PDCM_OBSERVATION_NOT_AVAILABLE);
+  EXPECT_EQ(health.code, PDCM_HEALTH_CODE_HEARTBEAT_MISSING);
+  EXPECT_EQ(health.catalog_generation, capabilities.catalog_generation);
+  EXPECT_GT(health.evaluated_monotonic_time_ns, 0);
+  EXPECT_NE(health.limitation[0], '\0');
+
   pdcm_entity_ref_t stale = entity.entity;
   ++stale.generation;
   pdcm_capability_set_t stale_result = PDCM_CAPABILITY_SET_INIT;

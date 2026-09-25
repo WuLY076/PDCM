@@ -99,6 +99,17 @@ EmbeddedBackend::capabilities(const EntityRef entity) const {
   return core_.capabilities(entity);
 }
 
+HealthQueryResult
+EmbeddedBackend::health(const HealthRequest &request) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!started_ || closed_) {
+    return {
+        Status(PDCM_STATUS_NOT_INITIALIZED, "embedded backend is not active"),
+        std::nullopt, std::nullopt};
+  }
+  return core_.health(request);
+}
+
 Status EmbeddedBackend::close() noexcept {
   std::lock_guard<std::mutex> lock(mutex_);
   if (closed_) {

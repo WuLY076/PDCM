@@ -80,6 +80,20 @@ local::v1::ObservationStatus toProtocolStatus(const ObservationStatus status) {
   return local::v1::OBSERVATION_STATUS_ERROR;
 }
 
+local::v1::HealthState toProtocolState(const HealthState state) {
+  switch (state) {
+  case HealthState::kHealthy:
+    return local::v1::HEALTH_STATE_HEALTHY;
+  case HealthState::kUnknown:
+    return local::v1::HEALTH_STATE_UNKNOWN;
+  case HealthState::kWarning:
+    return local::v1::HEALTH_STATE_WARNING;
+  case HealthState::kError:
+    return local::v1::HEALTH_STATE_ERROR;
+  }
+  return local::v1::HEALTH_STATE_UNSPECIFIED;
+}
+
 local::v1::CapabilityKind toProtocolKind(const CapabilityKind kind) {
   switch (kind) {
   case CapabilityKind::kMetricsCatalog:
@@ -215,6 +229,54 @@ RequestRouteResult RequestRouter::route(const Frame &request) const {
       }
     }
     return {responseFrame(request, MessageType::kCapabilityQueryResponse,
+                          response.SerializeAsString()),
+            false};
+  }
+
+  if (request.message_type == MessageType::kHealthQueryRequest) {
+    local::v1::HealthQueryRequest protocol_request;
+    if (!protocol_request.ParseFromArray(
+            request.payload.data(), static_cast<int>(request.payload.size())) ||
+        !protocol_request.has_entity() ||
+        protocol_request.entity().kind() != local::v1::ENTITY_KIND_DEVICE ||
+        protocol_request.entity().generation() == 0 ||
+        protocol_request.subsystem_id() == 0) {
+      return {errorFrame(request.request_id, PDCM_STATUS_INVALID_ARGUMENT,
+                         "MALFORMED_HEALTH_QUERY_REQUEST"),
+              true};
+    }
+
+    const HealthRequest health_request{
+        EntityRef{EntityKind::kDevice,
+                  EntityId{protocol_request.entity().pdcm_id()},
+                  protocol_request.entity().generation()},
+        protocol_request.subsystem_id(), protocol_request.catalog_generation(),
+        protocol_request.max_age_ns()};
+    const HealthQueryResult result = core_->health(health_request);
+    local::v1::HealthQueryResponse response;
+    response.set_status(static_cast<std::int32_t>(result.status.code()));
+    if (result.item.has_value()) {
+      const HealthResult &item = *result.item;
+      fillEntityRef(item.entity, response.mutable_entity());
+      response.set_subsystem_id(item.subsystem_id);
+      response.set_state(toProtocolState(item.state));
+      response.set_item_status(toProtocolStatus(item.item_status));
+      response.set_code(static_cast<std::uint32_t>(item.code));
+      response.set_catalog_generation(item.catalog_generation);
+      response.set_evaluated_monotonic_time_ns(
+          item.evaluated_monotonic_time_ns);
+      response.set_evidence_age_ns(item.evidence_age_ns);
+      if (!item.evidence.empty()) {
+        response.set_evidence_id(item.evidence.front().evidence_id);
+        response.set_sequence_or_token(
+            item.evidence.front().sequence_or_token);
+        response.set_source(item.evidence.front().source.provider);
+      }
+      for (const HealthLimitation &limitation : item.limitations) {
+        response.add_limitations(limitation.detail);
+      }
+    }
+    return {responseFrame(request, MessageType::kHealthQueryResponse,
                           response.SerializeAsString()),
             false};
   }

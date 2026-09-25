@@ -22,6 +22,7 @@ public:
   Status version(BackendVersion *version) const override;
   EntityListResult entities(EntityKind kind) const override;
   CapabilityQueryResult capabilities(EntityRef entity) const override;
+  HealthQueryResult health(const HealthRequest &request) const override;
   Status close() noexcept override;
 
 private:

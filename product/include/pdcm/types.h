@@ -143,6 +143,75 @@ typedef enum pdcm_metric_value_type {
   PDCM_VALUE_TYPE_ENUM = 5
 } pdcm_metric_value_type_t;
 
+typedef enum pdcm_health_subsystem {
+  PDCM_HEALTH_SUBSYSTEM_FIRMWARE_HEARTBEAT = 1
+} pdcm_health_subsystem_t;
+
+typedef enum pdcm_health_state {
+  PDCM_HEALTH_STATE_UNKNOWN = 0,
+  PDCM_HEALTH_STATE_HEALTHY = 1,
+  PDCM_HEALTH_STATE_WARNING = 2,
+  PDCM_HEALTH_STATE_ERROR = 3
+} pdcm_health_state_t;
+
+typedef enum pdcm_health_code {
+  PDCM_HEALTH_CODE_HEARTBEAT_OK = 0,
+  PDCM_HEALTH_CODE_HEARTBEAT_WARNING = 1,
+  PDCM_HEALTH_CODE_HEARTBEAT_FAULT = 2,
+  PDCM_HEALTH_CODE_HEARTBEAT_MISSING = 3,
+  PDCM_HEALTH_CODE_HEARTBEAT_STALE = 4,
+  PDCM_HEALTH_CODE_HEARTBEAT_TIMEOUT = 5,
+  PDCM_HEALTH_CODE_HEARTBEAT_READ_ERROR = 6,
+  PDCM_HEALTH_CODE_HEARTBEAT_UNSUPPORTED = 7,
+  PDCM_HEALTH_CODE_PROVIDER_UNAVAILABLE = 8,
+  PDCM_HEALTH_CODE_PROCESSOR_ERROR = 9
+} pdcm_health_code_t;
+
+#define PDCM_HEALTH_SOURCE_CAPACITY 64u
+#define PDCM_HEALTH_LIMITATION_CAPACITY 160u
+
+typedef struct pdcm_health_request {
+  pdcm_struct_header_t header;
+  pdcm_entity_ref_t entity;
+  uint32_t subsystem_id;
+  uint32_t reserved;
+  uint64_t catalog_generation;
+  uint64_t max_age_ns;
+} pdcm_health_request_t;
+
+#define PDCM_HEALTH_REQUEST_INIT                                              \
+  {                                                                            \
+    {(uint32_t)sizeof(pdcm_health_request_t), PDCM_STRUCT_VERSION_1},          \
+        PDCM_ENTITY_REF_INIT,                                                  \
+        (uint32_t)PDCM_HEALTH_SUBSYSTEM_FIRMWARE_HEARTBEAT, 0u, UINT64_C(0),  \
+        UINT64_C(0)                                                            \
+  }
+
+typedef struct pdcm_health_result {
+  pdcm_struct_header_t header;
+  pdcm_entity_ref_t entity;
+  uint32_t subsystem_id;
+  uint32_t state;
+  uint32_t item_status;
+  uint32_t code;
+  uint64_t catalog_generation;
+  int64_t evaluated_monotonic_time_ns;
+  int64_t evidence_age_ns;
+  uint64_t evidence_id;
+  uint64_t sequence_or_token;
+  char source[PDCM_HEALTH_SOURCE_CAPACITY];
+  char limitation[PDCM_HEALTH_LIMITATION_CAPACITY];
+} pdcm_health_result_t;
+
+#define PDCM_HEALTH_RESULT_INIT                                               \
+  {                                                                            \
+    {(uint32_t)sizeof(pdcm_health_result_t), PDCM_STRUCT_VERSION_1},           \
+        PDCM_ENTITY_REF_INIT, 0u, (uint32_t)PDCM_HEALTH_STATE_UNKNOWN,         \
+        (uint32_t)PDCM_OBSERVATION_NOT_AVAILABLE,                              \
+        (uint32_t)PDCM_HEALTH_CODE_HEARTBEAT_MISSING, UINT64_C(0), INT64_C(0),\
+        INT64_C(0), UINT64_C(0), UINT64_C(0), {0}, {0}                         \
+  }
+
 PDCM_END_DECLS
 
 #endif // PDCM_TYPES_H_

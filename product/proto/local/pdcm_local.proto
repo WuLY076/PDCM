@@ -165,3 +165,34 @@ message CapabilityQueryResponse {
   uint64 catalog_generation = 3;
   repeated CapabilityItem items = 4;
 }
+
+enum HealthState {
+  HEALTH_STATE_UNSPECIFIED = 0;
+  HEALTH_STATE_HEALTHY = 1;
+  HEALTH_STATE_UNKNOWN = 2;
+  HEALTH_STATE_WARNING = 3;
+  HEALTH_STATE_ERROR = 4;
+}
+
+message HealthQueryRequest {
+  EntityRef entity = 1;
+  uint32 subsystem_id = 2;
+  uint64 catalog_generation = 3;
+  uint64 max_age_ns = 4;
+}
+
+message HealthQueryResponse {
+  int32 status = 1;
+  EntityRef entity = 2;
+  uint32 subsystem_id = 3;
+  HealthState state = 4;
+  ObservationStatus item_status = 5;
+  uint32 code = 6;
+  uint64 catalog_generation = 7;
+  int64 evaluated_monotonic_time_ns = 8;
+  int64 evidence_age_ns = 9;
+  uint64 evidence_id = 10;
+  uint64 sequence_or_token = 11;
+  string source = 12;
+  repeated string limitations = 13;
+}

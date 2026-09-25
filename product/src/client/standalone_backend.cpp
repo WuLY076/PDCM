@@ -12,6 +12,7 @@
 
 #include "ipc/frame.hpp"
 #include "proto/local/pdcm_local.pb.h"
+#include "pdcm/types.h"
 
 namespace pdcm {
 namespace {
@@ -232,6 +233,38 @@ bool validCapabilityItem(const local::v1::CapabilityItem &item) {
          local::v1::CapabilityReason_IsValid(item.reason()) &&
          item.reason() != local::v1::CAPABILITY_REASON_UNSPECIFIED &&
          item.semantic_version() != 0 && item.catalog_generation() != 0;
+}
+
+HealthState fromProtocolState(const local::v1::HealthState state) {
+  switch (state) {
+  case local::v1::HEALTH_STATE_HEALTHY:
+    return HealthState::kHealthy;
+  case local::v1::HEALTH_STATE_UNKNOWN:
+    return HealthState::kUnknown;
+  case local::v1::HEALTH_STATE_WARNING:
+    return HealthState::kWarning;
+  case local::v1::HEALTH_STATE_ERROR:
+    return HealthState::kError;
+  case local::v1::HEALTH_STATE_UNSPECIFIED:
+  default:
+    return HealthState::kUnknown;
+  }
+}
+
+bool validHealthResponse(const local::v1::HealthQueryResponse &response) {
+  return response.has_entity() && validEntityRef(response.entity()) &&
+         response.subsystem_id() != 0 &&
+         local::v1::HealthState_IsValid(response.state()) &&
+         response.state() != local::v1::HEALTH_STATE_UNSPECIFIED &&
+         validProtocolStatus(response.item_status()) &&
+         response.code() <=
+             static_cast<std::uint32_t>(StableHealthCode::kProcessorError) &&
+         response.catalog_generation() != 0 &&
+         response.source().size() < PDCM_HEALTH_SOURCE_CAPACITY &&
+         std::all_of(response.limitations().begin(),
+                     response.limitations().end(), [](const std::string &item) {
+                       return item.size() < PDCM_HEALTH_LIMITATION_CAPACITY;
+                     });
 }
 
 } // namespace
@@ -610,6 +643,83 @@ StandaloneBackend::capabilities(const EntityRef entity) const {
          input.catalog_generation()});
   }
   return {Status::success(), std::move(capabilities)};
+}
+
+HealthQueryResult
+StandaloneBackend::health(const HealthRequest &health_request) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  local::v1::HealthQueryRequest request;
+  fillProtocolEntity(health_request.entity, request.mutable_entity());
+  request.set_subsystem_id(health_request.subsystem_id);
+  request.set_catalog_generation(health_request.catalog_generation);
+  request.set_max_age_ns(health_request.max_age_ns);
+
+  ipc::Frame response_frame;
+  const Status exchanged = exchangeLocked(
+      ipc::MessageType::kHealthQueryRequest, request.SerializeAsString(),
+      ipc::MessageType::kHealthQueryResponse, &response_frame);
+  if (!exchanged.ok()) {
+    return {exchanged, std::nullopt, std::nullopt};
+  }
+  if (response_frame.payload.size() >
+      static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    return {Status(PDCM_STATUS_INTERNAL,
+                   "health response payload is too large"),
+            std::nullopt, std::nullopt};
+  }
+
+  local::v1::HealthQueryResponse response;
+  if (!response.ParseFromArray(
+          response_frame.payload.data(),
+          static_cast<int>(response_frame.payload.size())) ||
+      !validProtocolStatus(response.status())) {
+    return {Status(PDCM_STATUS_INTERNAL,
+                   "local daemon returned malformed health"),
+            std::nullopt, std::nullopt};
+  }
+
+  const Status result_status =
+      protocolStatus(response.status(), "health query result");
+  if (result_status.code() != PDCM_STATUS_SUCCESS &&
+      result_status.code() != PDCM_STATUS_PARTIAL_RESULT) {
+    if (response.has_entity()) {
+      return {Status(PDCM_STATUS_INTERNAL,
+                     "failed health response contains a result"),
+              std::nullopt, std::nullopt};
+    }
+    return {result_status, std::nullopt, std::nullopt};
+  }
+  if (!validHealthResponse(response)) {
+    return {Status(PDCM_STATUS_INTERNAL,
+                   "local daemon returned invalid health result"),
+            std::nullopt, std::nullopt};
+  }
+
+  HealthResult item;
+  item.entity = fromProtocolEntity(response.entity());
+  item.subsystem_id = response.subsystem_id();
+  item.state = fromProtocolState(response.state());
+  item.item_status = fromProtocolStatus(response.item_status());
+  item.code = static_cast<StableHealthCode>(response.code());
+  item.catalog_generation = response.catalog_generation();
+  item.evaluated_monotonic_time_ns =
+      response.evaluated_monotonic_time_ns();
+  item.evidence_age_ns = response.evidence_age_ns();
+  if (response.evidence_id() != 0) {
+    EvidenceRef evidence;
+    evidence.evidence_id = response.evidence_id();
+    evidence.sequence_or_token = response.sequence_or_token();
+    evidence.observed_monotonic_time_ns =
+        item.evaluated_monotonic_time_ns - item.evidence_age_ns;
+    evidence.source.provider = response.source();
+    item.evidence.push_back(std::move(evidence));
+  }
+  for (const std::string &detail : response.limitations()) {
+    item.limitations.push_back(
+        {HealthLimitationCode::kEvidenceMissing, detail});
+  }
+  return {result_status, std::move(item), std::nullopt};
 }
 
 Status StandaloneBackend::close() noexcept {

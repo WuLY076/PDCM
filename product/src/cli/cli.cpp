@@ -143,6 +143,44 @@ const char *providerState(const std::uint32_t state) {
   }
 }
 
+const char *healthState(const std::uint32_t state) {
+  switch (state) {
+  case PDCM_HEALTH_STATE_HEALTHY:
+    return "HEALTHY";
+  case PDCM_HEALTH_STATE_WARNING:
+    return "WARNING";
+  case PDCM_HEALTH_STATE_ERROR:
+    return "ERROR";
+  default:
+    return "UNKNOWN";
+  }
+}
+
+const char *healthCode(const std::uint32_t code) {
+  switch (code) {
+  case PDCM_HEALTH_CODE_HEARTBEAT_OK:
+    return "HEARTBEAT_OK";
+  case PDCM_HEALTH_CODE_HEARTBEAT_WARNING:
+    return "HEARTBEAT_WARNING";
+  case PDCM_HEALTH_CODE_HEARTBEAT_FAULT:
+    return "HEARTBEAT_FAULT";
+  case PDCM_HEALTH_CODE_HEARTBEAT_MISSING:
+    return "HEARTBEAT_MISSING";
+  case PDCM_HEALTH_CODE_HEARTBEAT_STALE:
+    return "HEARTBEAT_STALE";
+  case PDCM_HEALTH_CODE_HEARTBEAT_TIMEOUT:
+    return "HEARTBEAT_TIMEOUT";
+  case PDCM_HEALTH_CODE_HEARTBEAT_READ_ERROR:
+    return "HEARTBEAT_READ_ERROR";
+  case PDCM_HEALTH_CODE_HEARTBEAT_UNSUPPORTED:
+    return "HEARTBEAT_UNSUPPORTED";
+  case PDCM_HEALTH_CODE_PROVIDER_UNAVAILABLE:
+    return "PROVIDER_UNAVAILABLE";
+  default:
+    return "PROCESSOR_ERROR";
+  }
+}
+
 bool unsignedValue(const std::string_view text, std::uint64_t *const output) {
   if (text.empty()) {
     return false;
@@ -576,16 +614,40 @@ int capabilityCommand(const Options &options, std::ostream &output,
     }
   }
   if (options.command == Command::kHealth) {
-    output << (options.format == Format::kJson
-                   ? "{\"schema_version\":1,\"command\":\"health\","
-                     "\"status\":\"PARTIAL_RESULT\",\"items\":[{"
-                     "\"subsystem\":\"firmware_heartbeat\","
-                     "\"state\":\"UNKNOWN\","
-                     "\"limitation\":\"PUBLIC_HEALTH_QUERY_PENDING\"}],"
-                     "\"errors\":[]}\n"
-                   : "firmware heartbeat: UNKNOWN "
-                     "(PUBLIC_HEALTH_QUERY_PENDING)\n");
-    return 1;
+    pdcm_health_request_t request = PDCM_HEALTH_REQUEST_INIT;
+    request.entity = devices.front().entity;
+    request.catalog_generation = capabilities.catalog_generation;
+    request.max_age_ns = options.fresh ? 1 : 0;
+    pdcm_health_result_t health = PDCM_HEALTH_RESULT_INIT;
+    status = pdcm_health_query(handle.get(), &request, &health);
+    if (status != PDCM_STATUS_SUCCESS &&
+        status != PDCM_STATUS_PARTIAL_RESULT) {
+      return exitCode(status);
+    }
+    if (options.format == Format::kJson) {
+      output << "{\"schema_version\":1,\"command\":\"health\","
+                "\"status\":\""
+             << statusName(status)
+             << "\",\"request_id\":0,\"catalog_generation\":"
+             << health.catalog_generation
+             << ",\"core_state\":\"READY\",\"provider_state\":\"READY\","
+                "\"items\":[{\"subsystem\":\"firmware_heartbeat\","
+                "\"state\":\""
+             << healthState(health.state) << "\",\"code\":\""
+             << healthCode(health.code) << "\",\"item_status\":"
+             << health.item_status << ",\"evidence_age_ns\":"
+             << health.evidence_age_ns << ",\"source\":\"" << health.source
+             << "\",\"limitation\":\"" << health.limitation
+             << "\"}],\"errors\":[]}\n";
+    } else {
+      output << "firmware heartbeat: " << healthState(health.state)
+             << " (" << healthCode(health.code) << ")";
+      if (health.limitation[0] != '\0') {
+        output << " - " << health.limitation;
+      }
+      output << "\n";
+    }
+    return health.state == PDCM_HEALTH_STATE_HEALTHY ? 0 : 1;
   }
   return 3;
 }

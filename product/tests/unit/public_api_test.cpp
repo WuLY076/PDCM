@@ -89,6 +89,16 @@ TEST(PublicApiTest, EmbeddedOpenReturnsDiagnosableDegradedHandle) {
   EXPECT_EQ(pdcm_capability_query(handle, &entity, &capabilities),
             PDCM_STATUS_UNAVAILABLE);
   EXPECT_EQ(capabilities.item_count, 0);
+  pdcm_health_request_t health_request = PDCM_HEALTH_REQUEST_INIT;
+  health_request.entity = entity;
+  pdcm_health_result_t health = PDCM_HEALTH_RESULT_INIT;
+  EXPECT_EQ(pdcm_health_query(handle, &health_request, &health),
+            PDCM_STATUS_UNAVAILABLE);
+  health_request.reserved = 1;
+  EXPECT_EQ(pdcm_health_query(handle, &health_request, &health),
+            PDCM_STATUS_INVALID_ARGUMENT);
+  EXPECT_EQ(pdcm_health_query(handle, nullptr, &health),
+            PDCM_STATUS_INVALID_ARGUMENT);
 
   EXPECT_EQ(pdcm_close(&handle), PDCM_STATUS_SUCCESS);
   EXPECT_EQ(handle, nullptr);

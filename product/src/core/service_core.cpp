@@ -11,6 +11,14 @@ TargetCatalog defaultCatalog(const TargetKind target) {
       target == TargetKind::kUnknown ? TargetKind::kFpga : target);
 }
 
+std::shared_ptr<const Clock>
+requireClock(std::shared_ptr<const Clock> clock) {
+  if (!clock) {
+    throw std::invalid_argument("PdcmServiceCore requires a clock");
+  }
+  return clock;
+}
+
 } // namespace
 
 PdcmServiceCore::PdcmServiceCore(RuntimeConfig config,
@@ -24,11 +32,9 @@ PdcmServiceCore::PdcmServiceCore(RuntimeConfig config,
                                  std::shared_ptr<const Clock> clock,
                                  TargetCatalog target_catalog)
     : config_(std::move(config)), provider_manager_(std::move(provider)),
-      clock_(std::move(clock)), semantic_catalog_(std::move(target_catalog)) {
-  if (!clock_) {
-    throw std::invalid_argument("PdcmServiceCore requires a clock");
-  }
-}
+      clock_(requireClock(std::move(clock))), target_catalog_(target_catalog),
+      semantic_catalog_(std::move(target_catalog)),
+      metrics_manager_(data_manager_, *clock_) {}
 
 PdcmServiceCore::~PdcmServiceCore() { (void)stop(); }
 
@@ -87,6 +93,22 @@ Status PdcmServiceCore::start() {
             committed.detected_device_count, committed.catalog_generation);
     return Status::success();
   }
+
+  const std::shared_ptr<const CatalogView> catalog =
+      semantic_catalog_.snapshot();
+  const Status data_status =
+      data_manager_.activateCatalog(catalog, target_catalog_);
+  const Status metrics_status =
+      metrics_manager_.activateCatalog(catalog, target_catalog_);
+  if (!data_status.ok() || !metrics_status.ok()) {
+    const pdcm_status_t failure =
+        !data_status.ok() ? data_status.code() : metrics_status.code();
+    publish(CoreState::kFailed, provider_manager_.state(),
+            CoreDegradedReason::kDiscoveryFailed, failure,
+            committed.detected_device_count, committed.catalog_generation);
+    return Status(failure, "core data services activation failed");
+  }
+  (void)metrics_manager_.onProviderStateChanged(provider_manager_.state());
 
   publish(CoreState::kReady, provider_manager_.state(),
           CoreDegradedReason::kNone, committed.status.code(),
@@ -155,6 +177,24 @@ PdcmServiceCore::capabilities(const EntityRef entity) const {
         std::nullopt};
   }
   return view->capabilities(entity);
+}
+
+HealthQueryResult
+PdcmServiceCore::health(const HealthRequest &request) const {
+  const CoreSnapshot core = snapshot();
+  if (core.state == CoreState::kCreated || core.state == CoreState::kStarting ||
+      core.state == CoreState::kFailed || core.state == CoreState::kStopping ||
+      core.state == CoreState::kStopped) {
+    return {Status(PDCM_STATUS_NOT_INITIALIZED,
+                   "core is not serving health"),
+            std::nullopt, std::nullopt};
+  }
+  if (core.catalog_generation == 0) {
+    return {Status(PDCM_STATUS_UNAVAILABLE,
+                   "health catalog is unavailable"),
+            std::nullopt, std::nullopt};
+  }
+  return metrics_manager_.queryHealth(request);
 }
 
 const RuntimeConfig &PdcmServiceCore::config() const noexcept {

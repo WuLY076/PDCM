@@ -36,6 +36,7 @@ public:
   ClientBackend &operator=(const ClientBackend &) = delete;
 
   virtual Status start() = 0;
+  virtual HealthQueryResult health(const HealthRequest &request) const = 0;
   virtual Status version(BackendVersion *version) const = 0;
   virtual EntityListResult entities(EntityKind kind) const = 0;
   virtual CapabilityQueryResult capabilities(EntityRef entity) const = 0;
