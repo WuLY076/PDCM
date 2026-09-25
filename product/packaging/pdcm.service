@@ -1,0 +1,32 @@
+[Unit]
+Description=PDCM local telemetry service
+After=local-fs.target
+ConditionPathIsReadWrite=/run
+
+[Service]
+Type=simple
+User=pdcm
+Group=pdcm
+RuntimeDirectory=pdcm
+RuntimeDirectoryMode=0750
+ExecStartPre=/usr/sbin/pdcm-daemon --config /etc/pdcm/pdcm.conf --check-config
+ExecStart=/usr/sbin/pdcm-daemon --config /etc/pdcm/pdcm.conf
+Restart=on-failure
+RestartSec=2s
+TimeoutStartSec=15s
+TimeoutStopSec=10s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ReadWritePaths=/run/pdcm
+
+[Install]
+WantedBy=multi-user.target

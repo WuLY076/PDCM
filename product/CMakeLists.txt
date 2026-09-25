@@ -293,10 +293,32 @@ target_link_libraries(pdcm_cli PRIVATE pdcm_cli_core)
 pdcm_enable_warnings(pdcm_cli)
 pdcm_enable_sanitizers(pdcm_cli)
 
+add_library(pdcm_daemon_config STATIC src/daemon/daemon_config.cpp)
+target_include_directories(
+  pdcm_daemon_config
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+)
+target_link_libraries(pdcm_daemon_config PUBLIC PDCM::core)
+pdcm_enable_warnings(pdcm_daemon_config)
+pdcm_enable_sanitizers(pdcm_daemon_config)
+
+add_executable(pdcm_daemon src/daemon/main.cpp)
+set_target_properties(pdcm_daemon PROPERTIES OUTPUT_NAME pdcm-daemon)
+target_link_libraries(
+  pdcm_daemon
+  PRIVATE pdcm_daemon_config PDCM::ipc pdcm_client_backend Threads::Threads
+)
+pdcm_enable_warnings(pdcm_daemon)
+pdcm_enable_sanitizers(pdcm_daemon)
+
 install(
   TARGETS pdcm pdcm_cli
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+install(
+  TARGETS pdcm_daemon
+  RUNTIME DESTINATION "${CMAKE_INSTALL_SBINDIR}"
 )
 
 install(
@@ -305,11 +327,56 @@ install(
   FILES_MATCHING PATTERN "*.h"
 )
 
+install(
+  FILES packaging/pdcm.conf
+  DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/pdcm"
+  PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ
+)
+install(
+  FILES packaging/pdcm.service
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/systemd/system"
+)
+
 if(BUILD_TESTING)
   find_package(GTest 1.14 CONFIG REQUIRED)
   include(GoogleTest)
 
   add_executable(pdcm_cli_test tests/unit/cli_test.cpp)
+  add_test(NAME product.daemon.help COMMAND pdcm_daemon --help)
+  add_test(
+    NAME product.daemon.config_check
+    COMMAND pdcm_daemon --config
+            "${CMAKE_CURRENT_SOURCE_DIR}/packaging/pdcm.conf" --check-config
+  )
+
+  add_executable(pdcm_daemon_config_test tests/unit/daemon_config_test.cpp)
+  target_link_libraries(
+    pdcm_daemon_config_test
+    PRIVATE pdcm_daemon_config GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_daemon_config_test)
+  pdcm_enable_sanitizers(pdcm_daemon_config_test)
+  gtest_discover_tests(
+    pdcm_daemon_config_test
+    TEST_PREFIX "product.daemon_config."
+  )
+
+  add_executable(pdcm_daemon_lifecycle_test tests/unit/daemon_lifecycle_test.cpp)
+  target_compile_definitions(
+    pdcm_daemon_lifecycle_test
+    PRIVATE PDCM_DAEMON_PATH="$<TARGET_FILE:pdcm_daemon>"
+  )
+  target_link_libraries(
+    pdcm_daemon_lifecycle_test
+    PRIVATE PDCM::pdcm GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_daemon_lifecycle_test)
+  pdcm_enable_sanitizers(pdcm_daemon_lifecycle_test)
+  gtest_discover_tests(
+    pdcm_daemon_lifecycle_test
+    TEST_PREFIX "product.daemon_lifecycle."
+  )
+
   target_link_libraries(
     pdcm_cli_test
     PRIVATE pdcm_cli_core GTest::gtest_main
