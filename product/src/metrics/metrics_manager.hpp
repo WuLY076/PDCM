@@ -9,6 +9,7 @@
 #include "common/clock.hpp"
 #include "common/health.hpp"
 #include "data/data_manager.hpp"
+#include "metrics/processor.hpp"
 #include "provider/provider.hpp"
 #include "semantic/semantic_catalog.hpp"
 
@@ -29,7 +30,9 @@ struct HealthQueryResult {
 
 class MetricsManager {
 public:
-  MetricsManager(DataManager &data_manager, const Clock &clock);
+  MetricsManager(
+      DataManager &data_manager, const Clock &clock,
+      std::vector<std::shared_ptr<const MetricProcessor>> processors = {});
 
   MetricsManager(const MetricsManager &) = delete;
   MetricsManager &operator=(const MetricsManager &) = delete;
@@ -41,6 +44,8 @@ public:
   [[nodiscard]] Status runFreshnessOnce(MonotonicTime now);
   [[nodiscard]] HealthQueryResult
   queryHealth(const HealthRequest &request) const;
+  [[nodiscard]] std::shared_ptr<const ProcessorGraphSnapshot>
+  processorGraph() const noexcept;
 
 private:
   struct Runtime {
@@ -68,6 +73,8 @@ private:
   const Clock &clock_;
   mutable std::mutex mutex_;
   Runtime runtime_;
+  std::vector<std::shared_ptr<const MetricProcessor>> processors_;
+  ProcessorGraph processor_graph_;
 };
 
 } // namespace pdcm

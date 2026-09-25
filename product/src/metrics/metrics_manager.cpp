@@ -27,8 +27,11 @@ std::uint64_t effectiveFreshness(const std::uint64_t catalog_freshness,
 
 } // namespace
 
-MetricsManager::MetricsManager(DataManager &data_manager, const Clock &clock)
-    : data_manager_(data_manager), clock_(clock) {}
+MetricsManager::MetricsManager(
+    DataManager &data_manager, const Clock &clock,
+    std::vector<std::shared_ptr<const MetricProcessor>> processors)
+    : data_manager_(data_manager), clock_(clock),
+      processors_(std::move(processors)) {}
 
 Status
 MetricsManager::activateCatalog(std::shared_ptr<const CatalogView> catalog,
@@ -41,6 +44,11 @@ MetricsManager::activateCatalog(std::shared_ptr<const CatalogView> catalog,
   const Status target_status = target_catalog.validate();
   if (!target_status.ok()) {
     return target_status;
+  }
+  const Status graph_status = processor_graph_.rebuild(
+      target_catalog, catalog->generation(), processors_);
+  if (!graph_status.ok()) {
+    return graph_status;
   }
 
   Runtime next;
@@ -245,6 +253,11 @@ MetricsManager::queryHealth(const HealthRequest &request) const {
                      : Status(PDCM_STATUS_PARTIAL_RESULT,
                               "health query contains an unknown item");
   return query;
+}
+
+std::shared_ptr<const ProcessorGraphSnapshot>
+MetricsManager::processorGraph() const noexcept {
+  return processor_graph_.snapshot();
 }
 
 MetricsManager::Runtime MetricsManager::runtimeSnapshot() const {

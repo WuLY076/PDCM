@@ -49,6 +49,7 @@ struct Observation {
   std::int64_t observed_wall_time_ns{0};
   std::uint64_t catalog_generation{0};
   std::uint64_t commit_epoch{0};
+  std::uint64_t counter_epoch{0};
   SourceMetadata source;
   std::optional<std::int64_t> stale_age_ns;
   std::optional<ErrorMetadata> latest_failure;
