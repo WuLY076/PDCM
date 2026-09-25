@@ -1,0 +1,11 @@
+PDCM_0.1 {
+  global:
+    pdcm_open;
+    pdcm_version_get;
+    pdcm_close;
+    pdcm_entity_list;
+    pdcm_capability_query;
+    pdcm_health_query;
+  local:
+    *;
+};

@@ -1,0 +1,27 @@
+# CMake and compiler outputs
+/build/
+/build-*/
+/out/
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+compile_commands.json
+*.a
+*.so
+*.so.*
+*.o
+
+# Test and analysis outputs
+Testing/
+coverage/
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store

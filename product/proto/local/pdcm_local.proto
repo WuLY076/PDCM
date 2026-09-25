@@ -1,0 +1,198 @@
+syntax = "proto3";
+
+package pdcm.local.v1;
+
+enum CoreState {
+  CORE_STATE_UNSPECIFIED = 0;
+  CORE_STATE_CREATED = 1;
+  CORE_STATE_STARTING = 2;
+  CORE_STATE_READY = 3;
+  CORE_STATE_DEGRADED = 4;
+  CORE_STATE_FAILED = 5;
+  CORE_STATE_STOPPING = 6;
+  CORE_STATE_STOPPED = 7;
+}
+
+enum ProviderState {
+  PROVIDER_STATE_UNSPECIFIED = 0;
+  PROVIDER_STATE_UNINITIALIZED = 1;
+  PROVIDER_STATE_READY = 2;
+  PROVIDER_STATE_UNAVAILABLE = 3;
+  PROVIDER_STATE_SHUTDOWN = 4;
+}
+
+enum ProviderFailurePhase {
+  PROVIDER_FAILURE_PHASE_NONE = 0;
+  PROVIDER_FAILURE_PHASE_LOAD = 1;
+  PROVIDER_FAILURE_PHASE_ENTRY = 2;
+  PROVIDER_FAILURE_PHASE_ABI = 3;
+  PROVIDER_FAILURE_PHASE_NATIVE_INITIALIZE = 4;
+  PROVIDER_FAILURE_PHASE_DISCOVERY = 5;
+}
+
+message ResourceLimits {
+  uint32 max_outstanding_requests = 1;
+  uint32 max_watches = 2;
+  uint32 max_subscriptions = 3;
+  uint32 max_frame_bytes = 4;
+}
+
+message HelloRequest {
+  uint32 protocol_major = 1;
+  uint32 protocol_minor = 2;
+  string client_library_version = 3;
+  uint64 process_id = 4;
+  bytes nonce = 5;
+  repeated string requested_features = 6;
+}
+
+message HelloResponse {
+  uint32 protocol_major = 1;
+  uint32 protocol_minor = 2;
+  uint64 session_id = 3;
+  string daemon_version = 4;
+  CoreState core_state = 5;
+  ProviderState provider_state = 6;
+  ProviderFailurePhase provider_failure_phase = 7;
+  uint64 catalog_generation = 8;
+  uint32 detected_device_count = 9;
+  int32 detail_status = 10;
+  ResourceLimits limits = 11;
+}
+
+message ErrorResponse {
+  int32 status = 1;
+  string stable_reason = 2;
+  uint32 supported_protocol_major = 3;
+  uint32 supported_protocol_minor = 4;
+}
+
+message VersionRequest {}
+
+message VersionResponse {
+  string daemon_version = 1;
+  uint32 protocol_major = 2;
+  uint32 protocol_minor = 3;
+  CoreState core_state = 4;
+  ProviderState provider_state = 5;
+  uint64 catalog_generation = 6;
+}
+enum EntityKind {
+  ENTITY_KIND_UNSPECIFIED = 0;
+  ENTITY_KIND_DEVICE = 1;
+  ENTITY_KIND_NODE = 2;
+}
+
+enum EntityState {
+  ENTITY_STATE_UNSPECIFIED = 0;
+  ENTITY_STATE_READY = 1;
+  ENTITY_STATE_ERROR = 2;
+}
+
+enum ObservationStatus {
+  OBSERVATION_STATUS_UNSPECIFIED = 0;
+  OBSERVATION_STATUS_VALID = 1;
+  OBSERVATION_STATUS_STALE = 2;
+  OBSERVATION_STATUS_NOT_AVAILABLE = 3;
+  OBSERVATION_STATUS_UNSUPPORTED = 4;
+  OBSERVATION_STATUS_ERROR = 5;
+}
+
+enum CapabilityKind {
+  CAPABILITY_KIND_UNSPECIFIED = 0;
+  CAPABILITY_KIND_METRICS_CATALOG = 1;
+  CAPABILITY_KIND_METRIC = 2;
+  CAPABILITY_KIND_HEALTH = 3;
+}
+
+enum CapabilityReason {
+  CAPABILITY_REASON_UNSPECIFIED = 0;
+  CAPABILITY_REASON_SUPPORTED = 1;
+  CAPABILITY_REASON_CATALOG_BLOCKED_EXTERNAL = 2;
+  CAPABILITY_REASON_PROVIDER_UNSUPPORTED = 3;
+  CAPABILITY_REASON_DEPENDENCY_MISSING = 4;
+  CAPABILITY_REASON_TEMPORARILY_UNAVAILABLE = 5;
+  CAPABILITY_REASON_PERMISSION_HIDDEN = 6;
+  CAPABILITY_REASON_POST_P0_DISABLED = 7;
+  CAPABILITY_REASON_TOPOLOGY_UNSUPPORTED = 8;
+}
+
+message EntityRef {
+  EntityKind kind = 1;
+  uint64 pdcm_id = 2;
+  uint64 generation = 3;
+}
+
+message EntityListRequest {
+  EntityKind kind = 1;
+}
+
+message EntityInfo {
+  EntityRef entity = 1;
+  EntityState state = 2;
+  int32 item_status = 3;
+  ObservationStatus native_id_status = 4;
+  ObservationStatus pci_bdf_status = 5;
+  ObservationStatus pdrv_version_status = 6;
+  string native_id = 7;
+  string pci_bdf = 8;
+  string pdrv_version = 9;
+}
+
+message EntityListResponse {
+  int32 status = 1;
+  uint32 detected_device_count = 2;
+  uint64 catalog_generation = 3;
+  repeated EntityInfo entities = 4;
+}
+
+message CapabilityQueryRequest {
+  EntityRef entity = 1;
+}
+
+message CapabilityItem {
+  CapabilityKind kind = 1;
+  uint32 id = 2;
+  bool supported = 3;
+  CapabilityReason reason = 4;
+  uint32 semantic_version = 5;
+  uint64 catalog_generation = 6;
+}
+
+message CapabilityQueryResponse {
+  int32 status = 1;
+  EntityRef entity = 2;
+  uint64 catalog_generation = 3;
+  repeated CapabilityItem items = 4;
+}
+
+enum HealthState {
+  HEALTH_STATE_UNSPECIFIED = 0;
+  HEALTH_STATE_HEALTHY = 1;
+  HEALTH_STATE_UNKNOWN = 2;
+  HEALTH_STATE_WARNING = 3;
+  HEALTH_STATE_ERROR = 4;
+}
+
+message HealthQueryRequest {
+  EntityRef entity = 1;
+  uint32 subsystem_id = 2;
+  uint64 catalog_generation = 3;
+  uint64 max_age_ns = 4;
+}
+
+message HealthQueryResponse {
+  int32 status = 1;
+  EntityRef entity = 2;
+  uint32 subsystem_id = 3;
+  HealthState state = 4;
+  ObservationStatus item_status = 5;
+  uint32 code = 6;
+  uint64 catalog_generation = 7;
+  int64 evaluated_monotonic_time_ns = 8;
+  int64 evidence_age_ns = 9;
+  uint64 evidence_id = 10;
+  uint64 sequence_or_token = 11;
+  string source = 12;
+  repeated string limitations = 13;
+}

@@ -1,0 +1,69 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtest-dev ninja-build protobuf-compiler
+      - name: Configure workspace
+        run: cmake -S . -B build -G Ninja -DBUILD_TESTING=ON
+      - name: Build workspace
+        run: cmake --build build
+      - name: Test workspace
+        run: ctest --test-dir build --output-on-failure
+
+  product-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build and boundary-check dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtest-dev ninja-build protobuf-compiler ripgrep
+      - name: Verify standalone product tree
+        run: tools/verify-sync-boundary.sh
+
+  sanitizers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtest-dev ninja-build protobuf-compiler
+      - name: Configure sanitizer workspace
+        run: >-
+          cmake -S . -B build -G Ninja -DBUILD_TESTING=ON
+          -DPDCM_ENABLE_SANITIZERS=ON -DCMAKE_BUILD_TYPE=Debug
+      - name: Build sanitizer workspace
+        run: cmake --build build
+      - name: Test sanitizer workspace
+        run: ctest --test-dir build --output-on-failure
+
+  release-report:
+    needs: [workspace, product-boundary, sanitizers]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate scope-aware release report
+        env:
+          PDCM_GATE_WORKSPACE_TESTS: PASS (workspace job)
+          PDCM_GATE_SANITIZER_TESTS: PASS (ASAN/UBSAN job)
+          PDCM_GATE_PRODUCT_BOUNDARY: PASS (product-boundary job)
+        run: >-
+          product/tools/verify-release-contract.sh
+          --report build/PDCM_P0_RELEASE_GATE.md
+      - name: Upload release report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdcm-p0-release-gate
+          path: build/PDCM_P0_RELEASE_GATE.md
+          if-no-files-found: error

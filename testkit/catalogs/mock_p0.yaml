@@ -1,0 +1,55 @@
+catalog_version: 1
+target: MOCK_ONLY
+metrics_status: TEST_ONLY
+metrics:
+  - metric_id: 4026531841
+    name: test_gauge_u64
+    value_type: uint
+    unit: test_units
+    temporality: GAUGE
+    scope: DEVICE
+    collection_mode: POLL
+    default_period_ns: 1000000000
+    min_period_ns: 100000000
+    freshness_ns: 2000000000
+    requirement_level: REQUIRED
+    semantic_version: 1
+  - metric_id: 4026531842
+    name: test_counter_total
+    value_type: uint
+    unit: test_units
+    temporality: CUMULATIVE_COUNTER
+    scope: DEVICE
+    collection_mode: POLL
+    default_period_ns: 1000000000
+    min_period_ns: 100000000
+    freshness_ns: 2000000000
+    requirement_level: REQUIRED
+    semantic_version: 1
+  - metric_id: 4026531843
+    name: test_counter_rate
+    value_type: double
+    unit: test_units_per_second
+    temporality: GAUGE
+    scope: DEVICE
+    collection_mode: DERIVED
+    dependencies: [4026531842]
+    semantic_version: 1
+  - metric_id: 4026531844
+    name: test_periodic_failure
+    value_type: uint
+    unit: test_units
+    temporality: GAUGE
+    scope: DEVICE
+    collection_mode: POLL
+    default_period_ns: 1000000000
+    min_period_ns: 100000000
+    freshness_ns: 2000000000
+    requirement_level: CONDITIONAL
+    semantic_version: 1
+health:
+  - subsystem: firmware_heartbeat
+    requirement: REQUIRED
+    evidence_contract: test_firmware_heartbeat
+    evidence_id: 4026532080
+    native_mapping: MOCK_ONLY
