@@ -23,6 +23,7 @@ option(PDCM_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSani
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(PdcmWarnings)
+include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 find_package(Protobuf 3.21 REQUIRED)
 
@@ -312,8 +313,12 @@ pdcm_enable_warnings(pdcm_daemon)
 pdcm_enable_sanitizers(pdcm_daemon)
 
 install(
-  TARGETS pdcm pdcm_cli
+  TARGETS pdcm
+  EXPORT PDCMTargets
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+)
+install(
+  TARGETS pdcm_cli
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 install(
@@ -329,12 +334,55 @@ install(
 
 install(
   FILES packaging/pdcm.conf
-  DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/pdcm"
+  DESTINATION "/etc/pdcm"
   PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ
 )
 install(
   FILES packaging/pdcm.service
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/systemd/system"
+)
+
+install(
+  DIRECTORY catalog/targets/
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/pdcm/catalog"
+  FILES_MATCHING PATTERN "*.yaml"
+)
+install(
+  DIRECTORY docs/release/
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/pdcm"
+  FILES_MATCHING PATTERN "*.md"
+)
+
+configure_package_config_file(
+  cmake/PDCMConfig.cmake.in
+  "${CMAKE_CURRENT_BINARY_DIR}/PDCMConfig.cmake"
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/PDCM"
+)
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/PDCMConfigVersion.cmake"
+  VERSION "${PROJECT_VERSION}"
+  COMPATIBILITY SameMajorVersion
+)
+configure_file(
+  cmake/pdcm.pc.in
+  "${CMAKE_CURRENT_BINARY_DIR}/pdcm.pc"
+  @ONLY
+)
+install(
+  EXPORT PDCMTargets
+  FILE PDCMTargets.cmake
+  NAMESPACE PDCM::
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/PDCM"
+)
+install(
+  FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/PDCMConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/PDCMConfigVersion.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/PDCM"
+)
+install(
+  FILES "${CMAKE_CURRENT_BINARY_DIR}/pdcm.pc"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
 )
 
 if(BUILD_TESTING)
@@ -424,6 +472,19 @@ if(BUILD_TESTING)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_public_symbols.cmake"
     )
   endif()
+
+  add_test(
+    NAME product.install_tree
+    COMMAND
+      ${CMAKE_COMMAND}
+      "-DPDCM_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+      "-DPDCM_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}"
+      "-DPDCM_READELF=${CMAKE_READELF}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_install_tree.cmake"
+  )
+  set_tests_properties(
+    product.install_tree PROPERTIES RUN_SERIAL TRUE
+  )
 
   add_executable(
     pdcm_foundation_test

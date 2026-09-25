@@ -1,0 +1,10 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: pdcm
+Description: PDCM public C API
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lpdcm
+Cflags: -I${includedir}
