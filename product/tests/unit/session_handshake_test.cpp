@@ -128,7 +128,8 @@ TEST(HandshakeTest, RejectsIncompatibleOrMalformedHelloWithoutSession) {
 
   ipc::HandshakeResult incompatible =
       handler.handle(helloFrame(2, 42), readyCore(), limits, peer);
-  EXPECT_EQ(incompatible.status.code(), PDCM_STATUS_UNSUPPORTED);
+  EXPECT_EQ(incompatible.status.code(),
+            PDCM_STATUS_PROTOCOL_INCOMPATIBLE);
   EXPECT_TRUE(incompatible.close_connection);
   EXPECT_EQ(sessions.size(), 0);
 

@@ -29,12 +29,12 @@ TEST(PublicApiTest, RejectsInvalidStructuresAndProtocolMajor) {
   pdcm_open_options_t options = PDCM_OPEN_OPTIONS_INIT;
   options.required_protocol_major = 2;
   pdcm_handle_t *handle = nullptr;
-  EXPECT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_UNSUPPORTED);
+  EXPECT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_PROTOCOL_INCOMPATIBLE);
   EXPECT_EQ(handle, nullptr);
 
   options = PDCM_OPEN_OPTIONS_INIT;
   options.required_protocol_minor = 1;
-  EXPECT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_UNSUPPORTED);
+  EXPECT_EQ(pdcm_open(&options, &handle), PDCM_STATUS_PROTOCOL_INCOMPATIBLE);
   EXPECT_EQ(handle, nullptr);
 
   options = PDCM_OPEN_OPTIONS_INIT;

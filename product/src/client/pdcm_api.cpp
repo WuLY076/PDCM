@@ -86,7 +86,7 @@ pdcm_status_t parseOptions(const pdcm_open_options_t *const options,
   }
   if (options->required_protocol_major != pdcm::ipc::kProtocolMajor ||
       options->required_protocol_minor > pdcm::ipc::kProtocolMinor) {
-    return PDCM_STATUS_UNSUPPORTED;
+    return PDCM_STATUS_PROTOCOL_INCOMPATIBLE;
   }
 
   switch (options->mode) {

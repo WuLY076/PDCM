@@ -30,6 +30,8 @@ const char *statusName(const pdcm_status_t status) noexcept {
     return "STALE_GENERATION";
   case PDCM_STATUS_INTERNAL:
     return "INTERNAL";
+  case PDCM_STATUS_PROTOCOL_INCOMPATIBLE:
+    return "PROTOCOL_INCOMPATIBLE";
   }
   return "UNKNOWN";
 }

@@ -14,6 +14,8 @@ namespace pdcm {
 namespace {
 
 TEST(StatusTest, ExposesStableStatusNames) {
+  EXPECT_EQ(std::string_view(statusName(PDCM_STATUS_PROTOCOL_INCOMPATIBLE)),
+            "PROTOCOL_INCOMPATIBLE");
   EXPECT_EQ(std::string_view(statusName(PDCM_STATUS_STALE_GENERATION)),
             "STALE_GENERATION");
 }

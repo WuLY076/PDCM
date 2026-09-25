@@ -109,8 +109,9 @@ HandshakeResult HandshakeHandler::handle(const Frame &request,
   if (request.protocol_major != kProtocolMajor ||
       hello.protocol_major() != kProtocolMajor ||
       hello.protocol_major() != request.protocol_major) {
-    return {Status(PDCM_STATUS_UNSUPPORTED, "protocol major is incompatible"),
-            errorFrame(request.request_id, PDCM_STATUS_UNSUPPORTED,
+    return {Status(PDCM_STATUS_PROTOCOL_INCOMPATIBLE,
+                   "protocol major is incompatible"),
+            errorFrame(request.request_id, PDCM_STATUS_PROTOCOL_INCOMPATIBLE,
                        "INCOMPATIBLE_PROTOCOL_MAJOR"),
             std::nullopt, true};
   }

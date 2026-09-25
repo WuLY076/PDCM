@@ -151,7 +151,7 @@ RequestRouter::RequestRouter(PdcmServiceCore *const core) : core_(core) {
 RequestRouteResult RequestRouter::route(const Frame &request) const {
   if (request.protocol_major != kProtocolMajor ||
       request.protocol_minor > kProtocolMinor) {
-    return {errorFrame(request.request_id, PDCM_STATUS_UNSUPPORTED,
+    return {errorFrame(request.request_id, PDCM_STATUS_PROTOCOL_INCOMPATIBLE,
                        "INCOMPATIBLE_PROTOCOL"),
             true};
   }

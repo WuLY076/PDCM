@@ -77,7 +77,8 @@ fromProtocolPhase(const local::v1::ProviderFailurePhase phase) {
 
 Status protocolStatus(const std::int32_t raw_status,
                       const char *const message) {
-  if (raw_status < PDCM_STATUS_SUCCESS || raw_status > PDCM_STATUS_INTERNAL) {
+  if (raw_status < PDCM_STATUS_SUCCESS ||
+      raw_status > PDCM_STATUS_PROTOCOL_INCOMPATIBLE) {
     return Status(PDCM_STATUS_INTERNAL, "invalid status from local daemon");
   }
   return Status(static_cast<pdcm_status_t>(raw_status), message);
@@ -98,7 +99,8 @@ std::string createNonce() {
   return std::string(nonce.data(), nonce.size());
 }
 bool validProtocolStatus(const std::int32_t status) {
-  return status >= PDCM_STATUS_SUCCESS && status <= PDCM_STATUS_INTERNAL;
+  return status >= PDCM_STATUS_SUCCESS &&
+         status <= PDCM_STATUS_PROTOCOL_INCOMPATIBLE;
 }
 
 local::v1::EntityKind toProtocolKind(const EntityKind kind) {
@@ -349,6 +351,10 @@ Status StandaloneBackend::start() {
                     "local daemon returned malformed error");
     }
     socket_.reset();
+    if (error.stable_reason() == "INCOMPATIBLE_PROTOCOL_MAJOR") {
+      return Status(PDCM_STATUS_PROTOCOL_INCOMPATIBLE,
+                    "local daemon protocol major is incompatible");
+    }
     const Status error_status =
         protocolStatus(error.status(), error.stable_reason().c_str());
     return error_status.ok()
@@ -385,7 +391,7 @@ Status StandaloneBackend::start() {
       !local::v1::ProviderFailurePhase_IsValid(
           response.provider_failure_phase())) {
     socket_.reset();
-    return Status(PDCM_STATUS_UNSUPPORTED,
+    return Status(PDCM_STATUS_PROTOCOL_INCOMPATIBLE,
                   "local daemon negotiated an invalid protocol");
   }
 

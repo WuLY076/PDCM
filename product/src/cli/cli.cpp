@@ -84,6 +84,8 @@ const char *statusName(const pdcm_status_t status) {
     return "STALE_GENERATION";
   case PDCM_STATUS_INTERNAL:
     return "INTERNAL";
+  case PDCM_STATUS_PROTOCOL_INCOMPATIBLE:
+    return "PROTOCOL_INCOMPATIBLE";
   }
   return "INTERNAL";
 }
@@ -111,6 +113,8 @@ int exitCode(const pdcm_status_t status) {
     return 6;
   case PDCM_STATUS_INTERNAL:
     return 8;
+  case PDCM_STATUS_PROTOCOL_INCOMPATIBLE:
+    return 7;
   }
   return 8;
 }
