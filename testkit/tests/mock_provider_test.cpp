@@ -64,7 +64,11 @@ TEST(MockProviderTest, ProducesDeterministicSingleDeviceData) {
   ASSERT_EQ(first.items.size(), request.items.size());
   EXPECT_EQ(std::get<std::uint64_t>(*first.items[0].value), 10);
   EXPECT_EQ(std::get<std::uint64_t>(*first.items[1].value), 100);
-  EXPECT_EQ(std::get<std::uint64_t>(*first.items[2].value), 0);
+  EXPECT_FALSE(first.items[2].value.has_value());
+  ASSERT_TRUE(first.items[2].heartbeat_class.has_value());
+  EXPECT_EQ(*first.items[2].heartbeat_class, HeartbeatNativeClass::kNormal);
+  ASSERT_TRUE(first.items[2].sequence_or_token.has_value());
+  EXPECT_EQ(*first.items[2].sequence_or_token, 1);
 
   ProviderReadResult second = provider.batchRead(request);
   EXPECT_EQ(std::get<std::uint64_t>(*second.items[0].value), 20);

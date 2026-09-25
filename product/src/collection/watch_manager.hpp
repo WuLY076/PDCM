@@ -122,6 +122,9 @@ public:
                   const TargetCatalog &target_catalog);
   [[nodiscard]] WatchCreateResult create(const WatchOwner &owner,
                                          WatchRequirement requirement);
+  [[nodiscard]] Status setFirmwareHeartbeatBaseline(Nanoseconds period,
+                                                    Nanoseconds retention);
+  [[nodiscard]] Status clearFirmwareHeartbeatBaseline();
   [[nodiscard]] Status destroy(const WatchOwner &owner, WatchId watch_id);
   [[nodiscard]] Status removeOwner(const WatchOwner &owner);
   [[nodiscard]] Status recordSamples(std::vector<WatchId> watch_ids,
@@ -135,6 +138,8 @@ private:
     std::shared_ptr<const CatalogView> view;
     std::map<std::uint32_t, MetricDescriptor> descriptors;
     std::map<std::uint32_t, bool> supported;
+    std::optional<HealthCatalogEntry> heartbeat;
+    bool heartbeat_supported{false};
     std::string provider_id;
     std::optional<EntityRef> entity;
     bool topology_unsupported{false};
@@ -156,6 +161,7 @@ private:
   std::shared_ptr<const WatchSnapshot> snapshot_;
   std::map<WatchId, std::uint64_t> sample_counts_;
   std::map<WatchId, MonotonicTime> last_sample_times_;
+  std::optional<EffectiveWatch> heartbeat_baseline_;
   WatchId next_watch_id_{1};
 };
 

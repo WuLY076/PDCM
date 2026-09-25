@@ -211,7 +211,18 @@ MockProvider::readItem(const ProviderReadItem &item,
 
   if (item.kind == ProviderDataKind::kHeartbeatEvidence &&
       item.data_id == kTestHeartbeatEvidenceId) {
-    result.value = static_cast<std::uint64_t>(config_.heartbeat);
+    switch (config_.heartbeat) {
+    case MockHeartbeatClass::kNormal:
+      result.heartbeat_class = HeartbeatNativeClass::kNormal;
+      break;
+    case MockHeartbeatClass::kWarning:
+      result.heartbeat_class = HeartbeatNativeClass::kWarning;
+      break;
+    case MockHeartbeatClass::kFault:
+      result.heartbeat_class = HeartbeatNativeClass::kFault;
+      break;
+    }
+    result.sequence_or_token = sequence;
     return result;
   }
 

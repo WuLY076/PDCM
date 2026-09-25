@@ -230,6 +230,16 @@ TEST(MetricsManagerTest, ExpiresEvidenceAndRequiresStrictlyNewRecovery) {
   ASSERT_TRUE(stored.result.has_value());
   EXPECT_EQ(stored.result->state, HealthState::kUnknown);
   EXPECT_EQ(stored.result->code, StableHealthCode::kHeartbeatTimeout);
+
+  fixture.clock.set(140);
+  FirmwareHeartbeatEvidence read_error = timeoutEvidence(fixture, 140);
+  read_error.error.status =
+      Status(PDCM_STATUS_INTERNAL, "scripted heartbeat read error");
+  ASSERT_TRUE(commitEvidence(fixture, std::move(read_error)).status.ok());
+  stored = fixture.data.readHealth(fixture.entity, fixture.view->generation());
+  ASSERT_TRUE(stored.result.has_value());
+  EXPECT_EQ(stored.result->state, HealthState::kUnknown);
+  EXPECT_EQ(stored.result->code, StableHealthCode::kHeartbeatReadError);
 }
 
 TEST(MetricsManagerTest, KeepsUnsupportedSubsystemOutOfAggregateHealth) {

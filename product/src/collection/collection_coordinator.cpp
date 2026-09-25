@@ -1,5 +1,7 @@
 #include "collection/collection_coordinator.hpp"
 
+#include "metrics/metrics_manager.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
@@ -74,6 +76,22 @@ bool validProviderItem(const ProviderReadItemResult &item) {
   if (item.status == ObservationStatus::kStale ||
       (item.source_sample_time_ns.has_value() &&
        *item.source_sample_time_ns < 0)) {
+    return false;
+  }
+  if (item.item.kind == ProviderDataKind::kHeartbeatEvidence) {
+    if (item.value.has_value()) {
+      return false;
+    }
+    if (item.status == ObservationStatus::kValid) {
+      return item.heartbeat_class.has_value() &&
+             *item.heartbeat_class != HeartbeatNativeClass::kUnknownNative &&
+             item.sequence_or_token.has_value() &&
+             item.source_sample_time_ns.has_value();
+    }
+    return !item.heartbeat_class.has_value() &&
+           !item.sequence_or_token.has_value();
+  }
+  if (item.heartbeat_class.has_value() || item.sequence_or_token.has_value()) {
     return false;
   }
   return item.status == ObservationStatus::kValid ? item.value.has_value()
@@ -645,10 +663,11 @@ CollectionCoordinator::CollectionCoordinator(ProviderManager &provider,
                                              DataManager &data,
                                              std::shared_ptr<const Clock> clock,
                                              CollectionLimits limits,
-                                             WatchManager *watch_manager)
+                                             WatchManager *watch_manager,
+                                             MetricsManager *metrics_manager)
     : provider_(provider), data_(data), clock_(std::move(clock)),
       limits_(limits), runtime_(std::make_unique<Runtime>(*this)),
-      watch_manager_(watch_manager) {
+      watch_manager_(watch_manager), metrics_manager_(metrics_manager) {
   if (clock_ == nullptr) {
     throw std::invalid_argument("CollectionCoordinator requires a clock");
   }
@@ -677,11 +696,20 @@ Status CollectionCoordinator::applyWatchSnapshot(
   std::map<GroupKey, std::vector<CollectionPlanItem>> groups;
   std::set<EffectiveWatchKey> unique;
   for (const EffectiveWatch &watch : watches->effective_watches) {
-    if (watch.key.provider_id.empty() ||
-        watch.key.kind != ProviderDataKind::kMetric || watch.key.data_id == 0 ||
+    bool known_data = false;
+    if (watch.key.kind == ProviderDataKind::kMetric) {
+      known_data =
+          data_.metricDescriptor(MetricId{watch.key.data_id}).has_value();
+    } else if (watch.key.kind == ProviderDataKind::kHeartbeatEvidence) {
+      const std::optional<HeartbeatCatalogState> heartbeat =
+          data_.heartbeatCatalog();
+      known_data = heartbeat.has_value() && heartbeat->supported &&
+                   heartbeat->descriptor.provider_data_id.has_value() &&
+                   *heartbeat->descriptor.provider_data_id == watch.key.data_id;
+    }
+    if (watch.key.provider_id.empty() || watch.key.data_id == 0 ||
         watch.period.count() <= 0 || watch.freshness < watch.period ||
-        !unique.insert(watch.key).second ||
-        !data_.metricDescriptor(MetricId{watch.key.data_id}).has_value()) {
+        !unique.insert(watch.key).second || !known_data) {
       return Status(PDCM_STATUS_INVALID_ARGUMENT,
                     "effective watch cannot be compiled");
     }
@@ -910,6 +938,83 @@ CollectionRunResult CollectionCoordinator::normalizeAndCommit(
   const std::int64_t observed_time =
       clock_->monotonicNow().time_since_epoch().count();
   const std::int64_t wall_time = clock_->wallTimeNanoseconds();
+  if (job.kind == ProviderDataKind::kHeartbeatEvidence) {
+    if (request.items.size() != 1) {
+      result.status = Status(PDCM_STATUS_INVALID_ARGUMENT,
+                             "heartbeat collection requires one item");
+      return result;
+    }
+    const ProviderReadItem &requested_item = request.items.front();
+    ProviderReadItemResult item;
+    Status error = Status::success();
+    if (!usableCallStatus(provider_result.call_status.code())) {
+      item.item = requested_item;
+      item.status = callFailureStatus(provider_result.call_status.code());
+      error = provider_result.call_status;
+    } else {
+      const auto found = returned.find(requested_item);
+      if (duplicated.find(requested_item) != duplicated.end() ||
+          found == returned.end()) {
+        result.status =
+            Status(PDCM_STATUS_INTERNAL,
+                   "provider returned no unique heartbeat evidence");
+        return result;
+      }
+      item = found->second;
+      if (!validProviderItem(item)) {
+        ++result.contract_violations;
+        result.status = Status(PDCM_STATUS_INTERNAL,
+                               "provider heartbeat evidence is malformed");
+        return result;
+      }
+      if (item.status != ObservationStatus::kValid) {
+        error =
+            Status(statusFor(item.status), "provider heartbeat read failed");
+      }
+    }
+
+    FirmwareHeartbeatEvidence evidence;
+    evidence.entity = requested_item.entity;
+    evidence.provider_data_id = requested_item.data_id;
+    evidence.native_class =
+        item.heartbeat_class.value_or(HeartbeatNativeClass::kUnknownNative);
+    evidence.status = item.status;
+    evidence.sequence_or_token = item.sequence_or_token.value_or(0);
+    evidence.source_sample_time_ns = item.source_sample_time_ns;
+    evidence.observed_monotonic_time_ns = observed_time;
+    evidence.source.provider = job.provider_id;
+    evidence.source.native_source = std::move(item.native_source);
+    evidence.error.status = std::move(error);
+    evidence.error.native_code = item.native_code;
+    evidence.error.retryable = item.retryable;
+    evidence.catalog_generation = request.catalog_generation;
+
+    result.normalized_items = 1;
+    result.evidence_commit = data_.commitHeartbeatEvidence(std::move(evidence));
+    if (!result.evidence_commit.status.ok()) {
+      result.status = result.evidence_commit.status;
+      return result;
+    }
+    if (result.evidence_commit.committed && metrics_manager_ != nullptr) {
+      const Status evaluated = metrics_manager_->onHeartbeatEvidenceCommitted(
+          result.evidence_commit.evidence_id);
+      if (!evaluated.ok()) {
+        result.status = evaluated;
+        return result;
+      }
+    }
+    if (!usableCallStatus(provider_result.call_status.code())) {
+      result.status = provider_result.call_status;
+    } else if (result.contract_violations != 0) {
+      result.status =
+          Status(PDCM_STATUS_PARTIAL_RESULT,
+                 "provider heartbeat result violated the read contract");
+    } else {
+      result.status = Status::success();
+    }
+    return result;
+  }
+
   std::vector<Observation> observations;
   observations.reserve(request.items.size());
 

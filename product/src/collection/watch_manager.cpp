@@ -65,6 +65,7 @@ Status WatchManager::activateCatalog(std::shared_ptr<const CatalogView> catalog,
   for (const MetricDescriptor &descriptor : target_catalog.metrics) {
     next_catalog.descriptors.emplace(descriptor.id.value, descriptor);
   }
+  next_catalog.heartbeat = target_catalog.health.front();
   if (!next_catalog.topology_unsupported &&
       next_catalog.view->entities().size() == 1) {
     const EntityRecord &entity = next_catalog.view->entities().front();
@@ -76,6 +77,9 @@ Status WatchManager::activateCatalog(std::shared_ptr<const CatalogView> catalog,
       for (const CapabilityItem &item : capabilities.capabilities->items) {
         if (item.kind == CapabilityKind::kMetric) {
           next_catalog.supported[item.id] = item.supported;
+        } else if (item.kind == CapabilityKind::kHealth &&
+                   item.id == kFirmwareHeartbeatHealthId) {
+          next_catalog.heartbeat_supported = item.supported;
         }
       }
     }
@@ -93,6 +97,7 @@ Status WatchManager::activateCatalog(std::shared_ptr<const CatalogView> catalog,
   }
 
   catalog_ = std::move(next_catalog);
+  heartbeat_baseline_.reset();
   std::map<WatchId, LogicalWatch> retained;
   for (const auto &entry : logical_) {
     if (catalog_.entity.has_value() &&
@@ -103,6 +108,65 @@ Status WatchManager::activateCatalog(std::shared_ptr<const CatalogView> catalog,
     }
   }
   return publish(std::move(retained));
+}
+
+Status WatchManager::setFirmwareHeartbeatBaseline(const Nanoseconds period,
+                                                  const Nanoseconds retention) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (catalog_.view == nullptr) {
+    return Status(PDCM_STATUS_NOT_INITIALIZED, "watch catalog is not active");
+  }
+  if (catalog_.topology_unsupported || !catalog_.entity.has_value() ||
+      !catalog_.heartbeat.has_value() ||
+      !catalog_.heartbeat->provider_data_id.has_value() ||
+      !catalog_.heartbeat_supported) {
+    return Status(PDCM_STATUS_UNSUPPORTED,
+                  "firmware heartbeat baseline is not supported");
+  }
+  if (catalog_.heartbeat->freshness_ns >
+          static_cast<std::uint64_t>(
+              std::numeric_limits<std::int64_t>::max()) ||
+      period.count() <= 0 ||
+      static_cast<std::uint64_t>(period.count()) >
+          catalog_.heartbeat->freshness_ns ||
+      retention.count() <
+          static_cast<std::int64_t>(catalog_.heartbeat->freshness_ns)) {
+    return Status(PDCM_STATUS_INVALID_ARGUMENT,
+                  "firmware heartbeat baseline timing is invalid");
+  }
+
+  EffectiveWatch baseline;
+  baseline.key.provider_id = catalog_.provider_id;
+  baseline.key.entity = *catalog_.entity;
+  baseline.key.kind = ProviderDataKind::kHeartbeatEvidence;
+  baseline.key.data_id = *catalog_.heartbeat->provider_data_id;
+  baseline.period = period;
+  baseline.freshness =
+      Nanoseconds{static_cast<std::int64_t>(catalog_.heartbeat->freshness_ns)};
+  baseline.retention = retention;
+  baseline.priority = WatchPriority::kHeartbeat;
+
+  const std::optional<EffectiveWatch> previous = heartbeat_baseline_;
+  heartbeat_baseline_ = std::move(baseline);
+  const Status status = publish(logical_);
+  if (!status.ok()) {
+    heartbeat_baseline_ = previous;
+  }
+  return status;
+}
+
+Status WatchManager::clearFirmwareHeartbeatBaseline() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!heartbeat_baseline_.has_value()) {
+    return Status::success();
+  }
+  const std::optional<EffectiveWatch> previous = heartbeat_baseline_;
+  heartbeat_baseline_.reset();
+  const Status status = publish(logical_);
+  if (!status.ok()) {
+    heartbeat_baseline_ = previous;
+  }
+  return status;
 }
 
 Status WatchManager::validateRequirement(
@@ -165,6 +229,9 @@ WatchManager::buildSnapshot(const std::map<WatchId, LogicalWatch> &logical,
       catalog_.view == nullptr ? 0 : catalog_.view->generation();
   std::map<EffectiveWatchKey, EffectiveWatch> effective;
 
+  if (heartbeat_baseline_.has_value()) {
+    effective.emplace(heartbeat_baseline_->key, *heartbeat_baseline_);
+  }
   for (const auto &entry : logical) {
     snapshot->logical_watches.push_back(entry.second);
     for (const MetricId metric : entry.second.requirement.metrics) {

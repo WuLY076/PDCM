@@ -9,6 +9,7 @@
 
 #include "common/clock.hpp"
 #include "common/domain_types.hpp"
+#include "common/health.hpp"
 #include "common/observation.hpp"
 #include "common/status.hpp"
 
@@ -110,6 +111,8 @@ struct ProviderReadItemResult {
   ProviderReadItem item;
   ObservationStatus status{ObservationStatus::kNotAvailable};
   std::optional<MetricValue> value;
+  std::optional<HeartbeatNativeClass> heartbeat_class;
+  std::optional<std::uint64_t> sequence_or_token;
   std::optional<std::int64_t> source_sample_time_ns;
   std::string native_source;
   std::int64_t native_code{0};

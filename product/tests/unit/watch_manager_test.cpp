@@ -10,6 +10,8 @@
 namespace pdcm {
 namespace {
 
+constexpr std::uint32_t kTestHeartbeatDataId = 99;
+
 TargetCatalog watchCatalog() {
   TargetCatalog catalog = TargetCatalog::blocked(TargetKind::kFpga);
   catalog.metrics_status = MetricsCatalogStatus::kReady;
@@ -30,6 +32,8 @@ TargetCatalog watchCatalog() {
     metric.provider_mapping_approved = true;
     catalog.metrics.push_back(metric);
   }
+  catalog.health.front().provider_data_id = kTestHeartbeatDataId;
+  catalog.health.front().freshness_ns = 500;
   return catalog;
 }
 
@@ -53,6 +57,8 @@ ProviderDescriptor watchProvider(const std::uint32_t devices = 1) {
     descriptor.capabilities.push_back(
         ProviderCapability{ProviderDataKind::kMetric, id, true, {}});
   }
+  descriptor.capabilities.push_back(ProviderCapability{
+      ProviderDataKind::kHeartbeatEvidence, kTestHeartbeatDataId, true, {}});
   return descriptor;
 }
 
@@ -85,6 +91,33 @@ WatchRequirement requirement(const ActiveWatchCatalog &catalog,
   request.freshness = Nanoseconds{period * 2};
   request.retention = Nanoseconds{period * 4};
   return request;
+}
+
+TEST(WatchManagerTest, PublishesAndClearsHeartbeatBaselineSeparately) {
+  ActiveWatchCatalog catalog;
+  WatchManager manager;
+  ASSERT_TRUE(manager.activateCatalog(catalog.view, catalog.target).ok());
+
+  EXPECT_EQ(
+      manager.setFirmwareHeartbeatBaseline(Nanoseconds{501}, Nanoseconds{1000})
+          .code(),
+      PDCM_STATUS_INVALID_ARGUMENT);
+  ASSERT_TRUE(
+      manager.setFirmwareHeartbeatBaseline(Nanoseconds{100}, Nanoseconds{1000})
+          .ok());
+  std::shared_ptr<const WatchSnapshot> snapshot = manager.snapshot();
+  EXPECT_TRUE(snapshot->logical_watches.empty());
+  ASSERT_EQ(snapshot->effective_watches.size(), 1);
+  EXPECT_EQ(snapshot->effective_watches.front().key.kind,
+            ProviderDataKind::kHeartbeatEvidence);
+  EXPECT_EQ(snapshot->effective_watches.front().key.data_id,
+            kTestHeartbeatDataId);
+  EXPECT_EQ(snapshot->effective_watches.front().priority,
+            WatchPriority::kHeartbeat);
+  EXPECT_EQ(snapshot->effective_watches.front().freshness, Nanoseconds{500});
+
+  ASSERT_TRUE(manager.clearFirmwareHeartbeatBaseline().ok());
+  EXPECT_TRUE(manager.snapshot()->effective_watches.empty());
 }
 
 TEST(WatchManagerTest, MergesOwnersDeterministicallyAndKeepsPhysicalWatch) {

@@ -149,7 +149,7 @@ target_include_directories(
 target_link_libraries(
   pdcm_collection
   PUBLIC
-    pdcm_common pdcm_provider_runtime pdcm_semantic pdcm_data
+    pdcm_common pdcm_provider_runtime pdcm_semantic pdcm_data pdcm_metrics
 )
 pdcm_enable_warnings(pdcm_collection)
 pdcm_enable_sanitizers(pdcm_collection)

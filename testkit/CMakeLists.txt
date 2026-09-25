@@ -73,6 +73,21 @@ if(BUILD_TESTING)
   )
 
   add_executable(
+    pdcm_health_roundtrip_test
+    tests/health_roundtrip_test.cpp
+  )
+  target_link_libraries(
+    pdcm_health_roundtrip_test
+    PRIVATE pdcm_mock_provider PDCM::collection PDCM::metrics GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_health_roundtrip_test)
+  pdcm_enable_sanitizers(pdcm_health_roundtrip_test)
+  gtest_discover_tests(
+    pdcm_health_roundtrip_test
+    TEST_PREFIX "testkit.health_roundtrip."
+  )
+
+  add_executable(
     pdcm_core_lifecycle_test
     tests/core_lifecycle_test.cpp
   )

@@ -18,6 +18,8 @@
 
 namespace pdcm {
 
+class MetricsManager;
+
 struct CollectionLimits {
   std::size_t max_plan_jobs{4096};
   std::size_t max_batch_items{64};
@@ -65,6 +67,7 @@ struct CollectionRunResult {
   std::size_t normalized_items{0};
   std::size_t contract_violations{0};
   DataCommitResult commit;
+  EvidenceCommitResult evidence_commit;
 };
 
 struct SchedulerRunSummary {
@@ -80,7 +83,8 @@ public:
   CollectionCoordinator(ProviderManager &provider, DataManager &data,
                         std::shared_ptr<const Clock> clock,
                         CollectionLimits limits = {},
-                        WatchManager *watch_manager = nullptr);
+                        WatchManager *watch_manager = nullptr,
+                        MetricsManager *metrics_manager = nullptr);
   ~CollectionCoordinator() override;
 
   CollectionCoordinator(const CollectionCoordinator &) = delete;
@@ -120,6 +124,7 @@ private:
   CollectionLimits limits_;
   std::unique_ptr<Runtime> runtime_;
   WatchManager *watch_manager_;
+  MetricsManager *metrics_manager_;
 
   mutable std::mutex plan_writer_mutex_;
   std::shared_ptr<const CollectionPlan> plan_;
