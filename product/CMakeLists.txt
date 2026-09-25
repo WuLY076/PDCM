@@ -388,6 +388,7 @@ install(
 if(BUILD_TESTING)
   find_package(GTest 1.14 CONFIG REQUIRED)
   include(GoogleTest)
+  find_program(PDCM_BASH bash REQUIRED)
 
   add_executable(pdcm_cli_test tests/unit/cli_test.cpp)
   add_test(NAME product.daemon.help COMMAND pdcm_daemon --help)
@@ -396,6 +397,12 @@ if(BUILD_TESTING)
     COMMAND pdcm_daemon --config
             "${CMAKE_CURRENT_SOURCE_DIR}/packaging/pdcm.conf" --check-config
   )
+  set_tests_properties(
+    product.daemon.help
+    PROPERTIES LABELS "tdd-09,ac-1,rel-acc-02"
+  )
+  set_tests_properties(product.daemon.config_check
+                       PROPERTIES LABELS "tdd-01,ac-1,ac-8")
 
   add_executable(pdcm_daemon_config_test tests/unit/daemon_config_test.cpp)
   target_link_libraries(
@@ -407,6 +414,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_daemon_config_test
     TEST_PREFIX "product.daemon_config."
+    PROPERTIES LABELS "tdd-01,ac-1,ac-8"
   )
 
   add_executable(pdcm_daemon_lifecycle_test tests/unit/daemon_lifecycle_test.cpp)
@@ -423,6 +431,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_daemon_lifecycle_test
     TEST_PREFIX "product.daemon_lifecycle."
+    PROPERTIES LABELS "tdd-01,tdd-10,ac-1,ac-8,ac-9,rel-acc-01,rel-acc-06"
   )
 
   target_link_libraries(
@@ -434,6 +443,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_cli_test
     TEST_PREFIX "product.cli."
+    PROPERTIES LABELS "tdd-09,tdd-10,ac-1,ac-5,ac-6,ac-10,ac-11,rel-acc-02,rel-acc-07"
   )
 
   add_executable(
@@ -446,6 +456,8 @@ if(BUILD_TESTING)
   )
   pdcm_enable_warnings(pdcm_public_headers_c_test)
   add_test(NAME product.public_headers_c COMMAND pdcm_public_headers_c_test)
+  set_tests_properties(product.public_headers_c
+                       PROPERTIES LABELS "tdd-02,tdd-10,ac-1,api-abi-gate")
 
   add_executable(
     pdcm_public_api_test
@@ -460,6 +472,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_public_api_test
     TEST_PREFIX "product.public_api."
+    PROPERTIES LABELS "tdd-02,tdd-10,ac-1,ac-5,rel-acc-04"
   )
 
   if(UNIX AND NOT APPLE)
@@ -470,6 +483,10 @@ if(BUILD_TESTING)
         "-DPDCM_NM=${CMAKE_NM}"
         "-DPDCM_LIBRARY=$<TARGET_FILE:pdcm>"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_public_symbols.cmake"
+    )
+    set_tests_properties(
+      product.public_symbols
+      PROPERTIES LABELS "tdd-02,tdd-10,ac-1,ac-5,api-abi-gate"
     )
   endif()
 
@@ -485,6 +502,19 @@ if(BUILD_TESTING)
   set_tests_properties(
     product.install_tree PROPERTIES RUN_SERIAL TRUE
   )
+  set_property(
+    TEST product.install_tree
+    APPEND PROPERTY LABELS
+      "tdd-09;tdd-10;ac-1;ac-5;ac-6;ac-10;ac-11;rel-acc-05;rel-acc-07;rel-acc-08"
+  )
+
+  add_test(
+    NAME product.release_contract
+    COMMAND "${PDCM_BASH}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify-release-contract.sh"
+  )
+  set_tests_properties(product.release_contract
+                       PROPERTIES LABELS "tdd-10,ac-1,ac-2,ac-3,ac-4,ac-5,ac-6,ac-7,ac-8,ac-9,ac-10,ac-11")
 
   add_executable(
     pdcm_foundation_test
@@ -503,6 +533,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_foundation_test
     TEST_PREFIX "product.foundation."
+    PROPERTIES LABELS "tdd-06,tdd-10,ac-4,ac-8"
   )
 
   add_executable(
@@ -518,6 +549,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_semantic_catalog_test
     TEST_PREFIX "product.semantic."
+    PROPERTIES LABELS "tdd-03,tdd-10,ac-2,ac-3,ac-7,ac-8"
   )
 
   add_executable(
@@ -533,6 +565,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_runtime_config_test
     TEST_PREFIX "product.runtime_config."
+    PROPERTIES LABELS "tdd-01,tdd-10,ac-1,ac-8"
   )
 
   add_executable(
@@ -548,6 +581,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_frame_test
     TEST_PREFIX "product.ipc.frame."
+    PROPERTIES LABELS "tdd-02,tdd-10,ac-1,ac-8,security-gate"
   )
 
   add_executable(
@@ -563,6 +597,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_unix_socket_test
     TEST_PREFIX "product.ipc.unix_socket."
+    PROPERTIES LABELS "tdd-02,tdd-10,ac-1,ac-8,security-gate"
   )
 
   add_executable(
@@ -578,6 +613,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_session_handshake_test
     TEST_PREFIX "product.ipc.session_handshake."
+    PROPERTIES LABELS "tdd-02,tdd-10,ac-1,ac-8,rel-acc-04,security-gate"
   )
 
   add_executable(
@@ -593,6 +629,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_data_manager_test
     TEST_PREFIX "product.data."
+    PROPERTIES LABELS "tdd-05,tdd-10,ac-3,ac-4,ac-7,ac-8"
   )
 
   add_executable(
@@ -608,6 +645,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_query_engine_test
     TEST_PREFIX "product.query."
+    PROPERTIES LABELS "tdd-05,tdd-10,ac-3,ac-4,ac-7,ac-8"
   )
 
   add_executable(
@@ -623,6 +661,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_subscription_manager_test
     TEST_PREFIX "product.subscription."
+    PROPERTIES LABELS "tdd-05,tdd-10,ac-3,ac-4,ac-8,engineering-robustness"
   )
 
   add_executable(
@@ -638,6 +677,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_processor_test
     TEST_PREFIX "product.processor."
+    PROPERTIES LABELS "tdd-06,tdd-10,ac-3,ac-7,ac-8"
   )
 
   add_executable(
@@ -653,6 +693,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_metrics_manager_test
     TEST_PREFIX "product.metrics."
+    PROPERTIES LABELS "tdd-06,tdd-10,ac-3,ac-4,ac-7,ac-8"
   )
 
   add_executable(
@@ -668,6 +709,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_watch_manager_test
     TEST_PREFIX "product.watch."
+    PROPERTIES LABELS "tdd-04,tdd-10,ac-3,ac-4,ac-8,ac-9"
   )
 
   add_executable(
@@ -683,5 +725,6 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_collection_coordinator_test
     TEST_PREFIX "product.collection."
+    PROPERTIES LABELS "tdd-04,tdd-10,ac-3,ac-4,ac-7,ac-8,ac-9,engineering-robustness"
   )
 endif()

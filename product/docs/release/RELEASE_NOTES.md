@@ -21,7 +21,10 @@ Provider available, the daemon starts in degraded mode.
 
 Verification includes C/C++ public-header checks, symbol allowlisting,
 standalone/embedded contracts, lifecycle and malformed-input tests, staged
-install manifest checks, and dynamic dependency scans.
+install manifest checks, dynamic dependency scans, ASAN/UBSAN execution, and
+versioned AC/loader status manifests. The TDD-10 release gate emits a
+scope-aware report with artifact hashes; mock evidence never changes a target
+item from `BLOCKED_EXTERNAL` to `PASS`.
 
 Target qualification is pending the approved PDRL ABI/loader contract,
 Discovery and heartbeat mappings, Golden sources, compatibility matrix, and

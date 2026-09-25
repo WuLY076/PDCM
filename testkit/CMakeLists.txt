@@ -40,6 +40,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_mock_provider_test
     TEST_PREFIX "testkit.mock_provider."
+    PROPERTIES LABELS "tdd-10,ac-2,ac-3,ac-4,ac-8,mock-contract"
   )
 
   add_executable(
@@ -55,6 +56,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_data_roundtrip_test
     TEST_PREFIX "testkit.data_roundtrip."
+    PROPERTIES LABELS "tdd-10,ac-3,ac-7,ac-8,mock-contract"
   )
 
   add_executable(
@@ -70,6 +72,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_collection_roundtrip_test
     TEST_PREFIX "testkit.collection_roundtrip."
+    PROPERTIES LABELS "tdd-10,ac-3,ac-7,ac-8,mock-contract"
   )
 
   add_executable(
@@ -85,6 +88,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_health_roundtrip_test
     TEST_PREFIX "testkit.health_roundtrip."
+    PROPERTIES LABELS "tdd-10,ac-4,ac-7,ac-8,mock-contract"
   )
 
   add_executable(
@@ -100,6 +104,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_core_lifecycle_test
     TEST_PREFIX "testkit.core_lifecycle."
+    PROPERTIES LABELS "tdd-10,ac-1,ac-2,ac-8,ac-9,mock-contract"
   )
 
   add_executable(
@@ -115,6 +120,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_embedded_backend_test
     TEST_PREFIX "testkit.embedded_backend."
+    PROPERTIES LABELS "tdd-10,ac-1,ac-2,ac-8,mock-contract"
   )
 
   add_executable(
@@ -150,6 +156,7 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_standalone_roundtrip_test
     TEST_PREFIX "testkit.standalone_roundtrip."
+    PROPERTIES LABELS "tdd-10,ac-1,ac-2,ac-8,rel-acc-03,mock-contract"
   )
 
   add_executable(
@@ -176,5 +183,6 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_cli_roundtrip_test
     TEST_PREFIX "testkit.cli_roundtrip."
+    PROPERTIES LABELS "tdd-10,ac-1,ac-4,ac-8,rel-acc-03,mock-contract"
   )
 endif()

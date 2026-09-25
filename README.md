@@ -37,3 +37,15 @@ Validate the future GitLab boundary with:
 ```sh
 tools/verify-sync-boundary.sh
 ```
+
+Run the complete TDD-10 gate with:
+
+```sh
+tools/run-release-gate.sh
+```
+
+The command runs the normal workspace tests, ASAN/UBSAN tests, and the
+standalone product boundary check. It writes
+`build/release-gate/PDCM_P0_RELEASE_GATE.md` with scope-aware AC-1 through
+AC-11 and Provider-loader status. A successful command does not override
+`BLOCKED_EXTERNAL` target requirements.
