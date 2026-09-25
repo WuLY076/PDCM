@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "common/clock.hpp"
+#include "common/health.hpp"
 #include "common/observation.hpp"
 #include "data/event_store.hpp"
 #include "semantic/semantic_catalog.hpp"
@@ -39,6 +40,13 @@ struct DataStoreLimits {
   std::size_t max_tombstones{1024};
   std::size_t max_events{4096};
   std::size_t max_event_bytes{4U * 1024U * 1024U};
+  std::size_t max_evidence_items{1024};
+  std::size_t max_evidence_bytes{1024U * 1024U};
+  std::int64_t evidence_ttl_ns{UINT64_C(60000000000)};
+  std::size_t max_health_entries{8};
+  std::size_t max_health_evidence_refs{8};
+  std::size_t max_health_result_bytes{16384};
+  std::size_t max_health_bytes{128U * 1024U};
 
   [[nodiscard]] Status validate() const;
 };
@@ -64,6 +72,36 @@ struct DataHistoryResult {
 struct EntityTombstone {
   EntityRef entity;
   std::uint64_t retired_catalog_generation{0};
+};
+
+struct EvidenceCommitResult {
+  Status status;
+  std::uint64_t evidence_id{0};
+  std::uint64_t commit_epoch{0};
+  bool committed{false};
+};
+
+struct EvidenceReadResult {
+  Status status;
+  std::uint64_t observed_commit_epoch{0};
+  std::optional<FirmwareHeartbeatEvidence> evidence;
+};
+
+struct HealthCommitResult {
+  Status status;
+  std::uint64_t commit_epoch{0};
+  bool state_changed{false};
+};
+
+struct HealthReadResult {
+  Status status;
+  std::uint64_t observed_commit_epoch{0};
+  std::optional<HealthResult> result;
+};
+
+struct HeartbeatCatalogState {
+  HealthCatalogEntry descriptor;
+  bool supported{false};
 };
 
 class DataManager {
@@ -96,6 +134,18 @@ public:
   [[nodiscard]] EventSnapshot eventsSince(std::uint64_t sequence) const;
   [[nodiscard]] std::size_t eventCount() const;
   [[nodiscard]] std::size_t eventBytes() const;
+  [[nodiscard]] EvidenceCommitResult
+  commitHeartbeatEvidence(FirmwareHeartbeatEvidence evidence);
+  [[nodiscard]] EvidenceReadResult
+  latestHeartbeatEvidence(EntityRef entity,
+                          std::uint64_t required_catalog_generation = 0) const;
+  [[nodiscard]] EvidenceReadResult
+  heartbeatEvidence(std::uint64_t evidence_id) const;
+  [[nodiscard]] HealthCommitResult commitHealth(HealthResult result);
+  [[nodiscard]] HealthReadResult
+  readHealth(EntityRef entity,
+             std::uint64_t required_catalog_generation = 0) const;
+  [[nodiscard]] std::optional<HeartbeatCatalogState> heartbeatCatalog() const;
 
 private:
   struct Entry {
@@ -109,11 +159,17 @@ private:
     std::map<DataKey, Entry> entries;
   };
 
+  struct EntityRefLess {
+    bool operator()(const EntityRef &lhs, const EntityRef &rhs) const noexcept;
+  };
+
   struct CatalogState {
     std::uint64_t generation{0};
     bool topology_unsupported{false};
     std::vector<EntityRef> entities;
     std::map<std::uint32_t, MetricDescriptor> metrics;
+    std::optional<HealthCatalogEntry> heartbeat;
+    bool heartbeat_supported{false};
   };
 
   [[nodiscard]] std::size_t shardIndex(const DataKey &key) const noexcept;
@@ -137,6 +193,10 @@ private:
   CatalogState catalog_;
   std::uint64_t commit_epoch_{0};
   std::deque<EntityTombstone> tombstones_;
+  std::deque<FirmwareHeartbeatEvidence> heartbeat_evidence_;
+  std::map<EntityRef, std::uint64_t, EntityRefLess> latest_heartbeat_;
+  std::map<EntityRef, HealthResult, EntityRefLess> health_;
+  std::uint64_t next_evidence_id_{1};
 };
 
 } // namespace pdcm

@@ -5,8 +5,10 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "common/domain_types.hpp"
+#include "common/health.hpp"
 #include "common/observation.hpp"
 #include "semantic/catalog_types.hpp"
 
@@ -41,8 +43,18 @@ struct SubscriptionLossPayload {
   std::uint64_t dropped_count{0};
 };
 
-using EventPayload = std::variant<std::monostate, MetricUpdatePayload,
-                                  SubscriptionLossPayload, std::string>;
+struct HealthChangePayload {
+  HealthState previous_state{HealthState::kUnknown};
+  HealthState state{HealthState::kUnknown};
+  StableHealthCode previous_code{StableHealthCode::kHeartbeatMissing};
+  StableHealthCode code{StableHealthCode::kHeartbeatMissing};
+  std::vector<EvidenceRef> evidence;
+  std::int64_t evidence_age_ns{0};
+};
+
+using EventPayload =
+    std::variant<std::monostate, MetricUpdatePayload, SubscriptionLossPayload,
+                 HealthChangePayload, std::string>;
 
 struct EventDraft {
   EventType type{EventType::kCatalogChanged};

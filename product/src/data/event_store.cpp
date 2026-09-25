@@ -45,6 +45,14 @@ std::size_t EventStore::eventBytes(const PdcmEvent &event) {
         using Payload = std::decay_t<decltype(payload)>;
         if constexpr (std::is_same_v<Payload, std::string>) {
           return payload.size();
+        } else if constexpr (std::is_same_v<Payload, HealthChangePayload>) {
+          std::size_t payload_bytes =
+              sizeof(Payload) + payload.evidence.size() * sizeof(EvidenceRef);
+          for (const EvidenceRef &evidence : payload.evidence) {
+            payload_bytes += evidence.source.provider.size();
+            payload_bytes += evidence.source.native_source.size();
+          }
+          return payload_bytes;
         } else {
           return sizeof(Payload);
         }

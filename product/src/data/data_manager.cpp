@@ -33,6 +33,62 @@ std::size_t valueBytes(const MetricValue &value) {
       value);
 }
 
+bool sameStatus(const Status &lhs, const Status &rhs) {
+  return lhs.code() == rhs.code() && lhs.message() == rhs.message();
+}
+
+bool sameHeartbeatEvidence(const FirmwareHeartbeatEvidence &lhs,
+                           const FirmwareHeartbeatEvidence &rhs) {
+  return lhs.entity == rhs.entity &&
+         lhs.provider_data_id == rhs.provider_data_id &&
+         lhs.native_class == rhs.native_class && lhs.status == rhs.status &&
+         lhs.sequence_or_token == rhs.sequence_or_token &&
+         lhs.source_sample_time_ns == rhs.source_sample_time_ns &&
+         lhs.observed_monotonic_time_ns == rhs.observed_monotonic_time_ns &&
+         lhs.source.provider == rhs.source.provider &&
+         lhs.source.native_source == rhs.source.native_source &&
+         sameStatus(lhs.error.status, rhs.error.status) &&
+         lhs.error.native_code == rhs.error.native_code &&
+         lhs.error.retryable == rhs.error.retryable &&
+         lhs.catalog_generation == rhs.catalog_generation;
+}
+
+std::size_t heartbeatEvidenceBytes(const FirmwareHeartbeatEvidence &evidence) {
+  return sizeof(FirmwareHeartbeatEvidence) + evidence.source.provider.size() +
+         evidence.source.native_source.size() +
+         evidence.error.status.message().size();
+}
+
+std::size_t healthResultBytes(const HealthResult &result) {
+  std::size_t bytes = sizeof(HealthResult);
+  for (const EvidenceRef &evidence : result.evidence) {
+    bytes += sizeof(EvidenceRef) + evidence.source.provider.size() +
+             evidence.source.native_source.size();
+  }
+  for (const HealthLimitation &limitation : result.limitations) {
+    bytes += sizeof(HealthLimitation) + limitation.detail.size();
+  }
+  return bytes;
+}
+
+bool sameHealthState(const HealthResult &lhs, const HealthResult &rhs) {
+  return lhs.state == rhs.state && lhs.code == rhs.code &&
+         lhs.limitations == rhs.limitations;
+}
+
+EventSeverity healthSeverity(const HealthState state) {
+  switch (state) {
+  case HealthState::kHealthy:
+    return EventSeverity::kInfo;
+  case HealthState::kUnknown:
+  case HealthState::kWarning:
+    return EventSeverity::kWarning;
+  case HealthState::kError:
+    return EventSeverity::kError;
+  }
+  return EventSeverity::kWarning;
+}
+
 } // namespace
 
 bool operator<(const DataKey &lhs, const DataKey &rhs) noexcept {
@@ -42,12 +98,21 @@ bool operator<(const DataKey &lhs, const DataKey &rhs) noexcept {
                   rhs.metric.value);
 }
 
+bool DataManager::EntityRefLess::operator()(
+    const EntityRef &lhs, const EntityRef &rhs) const noexcept {
+  return std::tie(lhs.kind, lhs.id.value, lhs.generation) <
+         std::tie(rhs.kind, rhs.id.value, rhs.generation);
+}
+
 Status DataStoreLimits::validate() const {
   if (shard_count == 0 || shard_count > 256 || max_keys == 0 ||
       max_history_samples_per_key == 0 || max_history_duration_ns <= 0 ||
       max_total_bytes == 0 || max_value_bytes == 0 || max_query_items == 0 ||
       max_tombstones == 0 || max_events == 0 || max_event_bytes == 0 ||
-      max_value_bytes > max_total_bytes) {
+      max_evidence_items == 0 || max_evidence_bytes == 0 ||
+      evidence_ttl_ns <= 0 || max_health_entries == 0 ||
+      max_health_evidence_refs == 0 || max_health_result_bytes == 0 ||
+      max_health_bytes == 0 || max_value_bytes > max_total_bytes) {
     return Status(PDCM_STATUS_INVALID_ARGUMENT,
                   "data store limits must be positive and bounded");
   }
@@ -128,6 +193,26 @@ Status DataManager::activateCatalog(std::shared_ptr<const CatalogView> catalog,
   for (const MetricDescriptor &descriptor : target_catalog.metrics) {
     next.metrics.emplace(descriptor.id.value, descriptor);
   }
+  next.heartbeat = target_catalog.health.front();
+  if (next.entities.size() == 1) {
+    const CapabilityQueryResult capabilities =
+        catalog->capabilities(next.entities.front());
+    if (capabilities.status.ok() && capabilities.capabilities.has_value()) {
+      const auto heartbeat =
+          std::find_if(capabilities.capabilities->items.begin(),
+                       capabilities.capabilities->items.end(),
+                       [](const CapabilityItem &item) {
+                         return item.kind == CapabilityKind::kHealth &&
+                                item.id == kFirmwareHeartbeatHealthId;
+                       });
+      next.heartbeat_supported =
+          heartbeat != capabilities.capabilities->items.end() &&
+          heartbeat->supported;
+    }
+  }
+  heartbeat_evidence_.clear();
+  latest_heartbeat_.clear();
+  health_.clear();
   catalog_ = std::move(next);
 
   shard_locks.clear();
@@ -525,6 +610,12 @@ std::size_t DataManager::storedBytes() const {
       bytes += entryBytes(pair.second);
     }
   }
+  for (const FirmwareHeartbeatEvidence &evidence : heartbeat_evidence_) {
+    bytes += heartbeatEvidenceBytes(evidence);
+  }
+  for (const auto &entry : health_) {
+    bytes += sizeof(EntityRef) + healthResultBytes(entry.second);
+  }
   return bytes;
 }
 
@@ -555,6 +646,407 @@ std::size_t DataManager::eventCount() const {
 
 std::size_t DataManager::eventBytes() const {
   return event_store_.storedBytes();
+}
+
+EvidenceCommitResult
+DataManager::commitHeartbeatEvidence(FirmwareHeartbeatEvidence evidence) {
+  EvidenceCommitResult result;
+  if (evidence.evidence_id != 0) {
+    result.status = Status(PDCM_STATUS_INVALID_ARGUMENT,
+                           "heartbeat evidence id is store-assigned");
+    return result;
+  }
+  const Status validation = validateFirmwareHeartbeatEvidence(evidence);
+  if (!validation.ok()) {
+    result.status = validation;
+    return result;
+  }
+
+  std::unique_lock<std::mutex> lock(state_mutex_);
+  if (catalog_.generation == 0) {
+    result.status =
+        Status(PDCM_STATUS_NOT_INITIALIZED, "data catalog is not active");
+    return result;
+  }
+  if (catalog_.topology_unsupported) {
+    result.status = Status(PDCM_STATUS_UNSUPPORTED,
+                           "heartbeat evidence rejects multi-device P0");
+    return result;
+  }
+  if (evidence.catalog_generation != catalog_.generation ||
+      std::find(catalog_.entities.begin(), catalog_.entities.end(),
+                evidence.entity) == catalog_.entities.end()) {
+    result.status = Status(PDCM_STATUS_STALE_GENERATION,
+                           "heartbeat evidence entity or catalog is stale");
+    return result;
+  }
+  if (!catalog_.heartbeat.has_value() ||
+      !catalog_.heartbeat->provider_data_id.has_value() ||
+      evidence.provider_data_id != *catalog_.heartbeat->provider_data_id ||
+      !catalog_.heartbeat_supported) {
+    result.status = Status(PDCM_STATUS_UNSUPPORTED,
+                           "heartbeat evidence mapping is unavailable");
+    return result;
+  }
+  if (commit_epoch_ == std::numeric_limits<std::uint64_t>::max() ||
+      next_evidence_id_ == std::numeric_limits<std::uint64_t>::max()) {
+    result.status =
+        Status(PDCM_STATUS_INTERNAL, "heartbeat evidence counter overflow");
+    return result;
+  }
+
+  const auto latest_id = latest_heartbeat_.find(evidence.entity);
+  if (latest_id != latest_heartbeat_.end()) {
+    const auto latest =
+        std::find_if(heartbeat_evidence_.begin(), heartbeat_evidence_.end(),
+                     [&latest_id](const FirmwareHeartbeatEvidence &candidate) {
+                       return candidate.evidence_id == latest_id->second;
+                     });
+    if (latest != heartbeat_evidence_.end()) {
+      if (sameHeartbeatEvidence(*latest, evidence)) {
+        result.status = Status::success();
+        result.evidence_id = latest->evidence_id;
+        result.commit_epoch = commit_epoch_;
+        return result;
+      }
+      if (evidence.observed_monotonic_time_ns <=
+          latest->observed_monotonic_time_ns) {
+        result.status = Status(PDCM_STATUS_STALE_GENERATION,
+                               "heartbeat evidence is not newer");
+        return result;
+      }
+    }
+  }
+  if (evidence.status == ObservationStatus::kValid) {
+    const auto last_valid =
+        std::find_if(heartbeat_evidence_.rbegin(), heartbeat_evidence_.rend(),
+                     [&evidence](const FirmwareHeartbeatEvidence &candidate) {
+                       return candidate.entity == evidence.entity &&
+                              candidate.status == ObservationStatus::kValid;
+                     });
+    if (last_valid != heartbeat_evidence_.rend() &&
+        (evidence.sequence_or_token <= last_valid->sequence_or_token ||
+         *evidence.source_sample_time_ns <=
+             *last_valid->source_sample_time_ns)) {
+      result.status = Status(PDCM_STATUS_STALE_GENERATION,
+                             "heartbeat token or sample time is not newer");
+      return result;
+    }
+  }
+
+  evidence.evidence_id = next_evidence_id_;
+  std::deque<FirmwareHeartbeatEvidence> staged = heartbeat_evidence_;
+  staged.push_back(evidence);
+  const auto is_referenced = [this](const std::uint64_t evidence_id) {
+    return std::any_of(
+        health_.begin(), health_.end(), [evidence_id](const auto &entry) {
+          return std::any_of(entry.second.evidence.begin(),
+                             entry.second.evidence.end(),
+                             [evidence_id](const EvidenceRef &reference) {
+                               return reference.evidence_id == evidence_id;
+                             });
+        });
+  };
+  const auto staged_bytes = [&staged]() {
+    std::size_t bytes = 0;
+    for (const FirmwareHeartbeatEvidence &item : staged) {
+      bytes += heartbeatEvidenceBytes(item);
+    }
+    return bytes;
+  };
+  for (auto candidate = staged.begin(); candidate != staged.end();) {
+    if (candidate->evidence_id != evidence.evidence_id &&
+        evidence.observed_monotonic_time_ns >=
+            candidate->observed_monotonic_time_ns &&
+        evidence.observed_monotonic_time_ns -
+                candidate->observed_monotonic_time_ns >
+            limits_.evidence_ttl_ns &&
+        !is_referenced(candidate->evidence_id)) {
+      candidate = staged.erase(candidate);
+    } else {
+      ++candidate;
+    }
+  }
+  while (staged.size() > limits_.max_evidence_items ||
+         staged_bytes() > limits_.max_evidence_bytes) {
+    const auto evictable =
+        std::find_if(staged.begin(), staged.end(),
+                     [&evidence, &is_referenced](
+                         const FirmwareHeartbeatEvidence &candidate) {
+                       return candidate.evidence_id != evidence.evidence_id &&
+                              !is_referenced(candidate.evidence_id);
+                     });
+    if (evictable == staged.end()) {
+      result.status = Status(PDCM_STATUS_RESOURCE_EXHAUSTED,
+                             "heartbeat evidence store limit exceeded");
+      return result;
+    }
+    staged.erase(evictable);
+  }
+
+  ++next_evidence_id_;
+  ++commit_epoch_;
+  result.evidence_id = evidence.evidence_id;
+  result.commit_epoch = commit_epoch_;
+  result.committed = true;
+  result.status = Status::success();
+  heartbeat_evidence_.swap(staged);
+  latest_heartbeat_[evidence.entity] = result.evidence_id;
+  lock.unlock();
+  state_changed_.notify_all();
+  return result;
+}
+
+EvidenceReadResult DataManager::latestHeartbeatEvidence(
+    const EntityRef entity,
+    const std::uint64_t required_catalog_generation) const {
+  EvidenceReadResult result;
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  result.observed_commit_epoch = commit_epoch_;
+  if (catalog_.generation == 0) {
+    result.status =
+        Status(PDCM_STATUS_NOT_INITIALIZED, "data catalog is not active");
+    return result;
+  }
+  if (required_catalog_generation != 0 &&
+      required_catalog_generation != catalog_.generation) {
+    result.status = Status(PDCM_STATUS_STALE_GENERATION,
+                           "heartbeat query catalog is stale");
+    return result;
+  }
+  const auto current =
+      std::find_if(catalog_.entities.begin(), catalog_.entities.end(),
+                   [entity](const EntityRef &candidate) {
+                     return sameLogicalEntity(candidate, entity);
+                   });
+  if (current == catalog_.entities.end()) {
+    result.status =
+        Status(PDCM_STATUS_NOT_FOUND, "heartbeat query entity is not present");
+    return result;
+  }
+  if (*current != entity) {
+    result.status =
+        Status(PDCM_STATUS_STALE_GENERATION, "heartbeat query entity is stale");
+    return result;
+  }
+  const auto latest_id = latest_heartbeat_.find(entity);
+  if (latest_id == latest_heartbeat_.end()) {
+    result.status =
+        Status(PDCM_STATUS_NOT_FOUND, "heartbeat evidence is not present");
+    return result;
+  }
+  const auto evidence =
+      std::find_if(heartbeat_evidence_.begin(), heartbeat_evidence_.end(),
+                   [&latest_id](const FirmwareHeartbeatEvidence &candidate) {
+                     return candidate.evidence_id == latest_id->second;
+                   });
+  if (evidence == heartbeat_evidence_.end()) {
+    result.status =
+        Status(PDCM_STATUS_NOT_FOUND, "heartbeat evidence has been evicted");
+    return result;
+  }
+  result.evidence = *evidence;
+  result.status = Status::success();
+  return result;
+}
+
+EvidenceReadResult
+DataManager::heartbeatEvidence(const std::uint64_t evidence_id) const {
+  EvidenceReadResult result;
+  if (evidence_id == 0) {
+    result.status = Status(PDCM_STATUS_INVALID_ARGUMENT,
+                           "heartbeat evidence id must be non-zero");
+    return result;
+  }
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  result.observed_commit_epoch = commit_epoch_;
+  if (catalog_.generation == 0) {
+    result.status =
+        Status(PDCM_STATUS_NOT_INITIALIZED, "data catalog is not active");
+    return result;
+  }
+  const auto evidence =
+      std::find_if(heartbeat_evidence_.begin(), heartbeat_evidence_.end(),
+                   [evidence_id](const FirmwareHeartbeatEvidence &candidate) {
+                     return candidate.evidence_id == evidence_id;
+                   });
+  if (evidence == heartbeat_evidence_.end()) {
+    result.status =
+        Status(PDCM_STATUS_NOT_FOUND, "heartbeat evidence is not present");
+    return result;
+  }
+  result.evidence = *evidence;
+  result.status = Status::success();
+  return result;
+}
+
+HealthCommitResult DataManager::commitHealth(HealthResult result_value) {
+  HealthCommitResult result;
+  const Status validation = validateHealthResult(result_value);
+  if (!validation.ok()) {
+    result.status = validation;
+    return result;
+  }
+  if (result_value.evidence.size() > limits_.max_health_evidence_refs ||
+      healthResultBytes(result_value) > limits_.max_health_result_bytes) {
+    result.status = Status(PDCM_STATUS_RESOURCE_EXHAUSTED,
+                           "health result exceeds configured limits");
+    return result;
+  }
+
+  HealthState previous_state = HealthState::kUnknown;
+  StableHealthCode previous_code = StableHealthCode::kHeartbeatMissing;
+  std::unique_lock<std::mutex> lock(state_mutex_);
+  if (catalog_.generation == 0) {
+    result.status =
+        Status(PDCM_STATUS_NOT_INITIALIZED, "data catalog is not active");
+    return result;
+  }
+  if (result_value.catalog_generation != catalog_.generation ||
+      std::find(catalog_.entities.begin(), catalog_.entities.end(),
+                result_value.entity) == catalog_.entities.end()) {
+    result.status = Status(PDCM_STATUS_STALE_GENERATION,
+                           "health result entity or catalog is stale");
+    return result;
+  }
+  if (!catalog_.heartbeat.has_value()) {
+    result.status = Status(PDCM_STATUS_UNSUPPORTED,
+                           "heartbeat health is not in the catalog");
+    return result;
+  }
+  std::set<std::uint64_t> referenced;
+  for (const EvidenceRef &reference : result_value.evidence) {
+    if (!referenced.insert(reference.evidence_id).second) {
+      result.status = Status(PDCM_STATUS_INVALID_ARGUMENT,
+                             "health result repeats evidence");
+      return result;
+    }
+    const auto evidence = std::find_if(
+        heartbeat_evidence_.begin(), heartbeat_evidence_.end(),
+        [&reference,
+         &result_value](const FirmwareHeartbeatEvidence &candidate) {
+          return candidate.evidence_id == reference.evidence_id &&
+                 candidate.entity == result_value.entity &&
+                 candidate.catalog_generation ==
+                     result_value.catalog_generation &&
+                 candidate.sequence_or_token == reference.sequence_or_token &&
+                 candidate.source_sample_time_ns ==
+                     reference.source_sample_time_ns &&
+                 candidate.observed_monotonic_time_ns ==
+                     reference.observed_monotonic_time_ns &&
+                 candidate.source.provider == reference.source.provider &&
+                 candidate.source.native_source ==
+                     reference.source.native_source;
+        });
+    if (evidence == heartbeat_evidence_.end()) {
+      result.status = Status(PDCM_STATUS_NOT_FOUND,
+                             "health evidence reference is not stored");
+      return result;
+    }
+  }
+  const auto current = health_.find(result_value.entity);
+  if (current == health_.end() &&
+      health_.size() >= limits_.max_health_entries) {
+    result.status =
+        Status(PDCM_STATUS_RESOURCE_EXHAUSTED, "health entry limit exceeded");
+    return result;
+  }
+  std::size_t health_bytes = healthResultBytes(result_value);
+  for (const auto &entry : health_) {
+    if (entry.first != result_value.entity) {
+      health_bytes += healthResultBytes(entry.second);
+    }
+  }
+  if (health_bytes > limits_.max_health_bytes) {
+    result.status = Status(PDCM_STATUS_RESOURCE_EXHAUSTED,
+                           "health store byte limit exceeded");
+    return result;
+  }
+  if (commit_epoch_ == std::numeric_limits<std::uint64_t>::max()) {
+    result.status =
+        Status(PDCM_STATUS_INTERNAL, "health commit epoch overflow");
+    return result;
+  }
+  if (current != health_.end()) {
+    previous_state = current->second.state;
+    previous_code = current->second.code;
+    result.state_changed = !sameHealthState(current->second, result_value);
+  } else {
+    result.state_changed = isDeterminateHealth(result_value.state);
+  }
+  ++commit_epoch_;
+  result.commit_epoch = commit_epoch_;
+  result.status = Status::success();
+  health_[result_value.entity] = result_value;
+  lock.unlock();
+  state_changed_.notify_all();
+
+  if (result.state_changed) {
+    EventDraft event;
+    event.type = EventType::kFirmwareHeartbeatHealthChanged;
+    event.severity = healthSeverity(result_value.state);
+    event.entity = result_value.entity;
+    event.health_subsystem = result_value.subsystem_id;
+    event.occurrence_time_ns = result_value.evaluated_monotonic_time_ns;
+    event.catalog_generation = result_value.catalog_generation;
+    event.payload = HealthChangePayload{
+        previous_state,    result_value.state,    previous_code,
+        result_value.code, result_value.evidence, result_value.evidence_age_ns};
+    (void)event_store_.publish(event);
+  }
+  return result;
+}
+
+HealthReadResult
+DataManager::readHealth(const EntityRef entity,
+                        const std::uint64_t required_catalog_generation) const {
+  HealthReadResult result;
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  result.observed_commit_epoch = commit_epoch_;
+  if (catalog_.generation == 0) {
+    result.status =
+        Status(PDCM_STATUS_NOT_INITIALIZED, "data catalog is not active");
+    return result;
+  }
+  if (required_catalog_generation != 0 &&
+      required_catalog_generation != catalog_.generation) {
+    result.status =
+        Status(PDCM_STATUS_STALE_GENERATION, "health query catalog is stale");
+    return result;
+  }
+  const auto current =
+      std::find_if(catalog_.entities.begin(), catalog_.entities.end(),
+                   [entity](const EntityRef &candidate) {
+                     return sameLogicalEntity(candidate, entity);
+                   });
+  if (current == catalog_.entities.end()) {
+    result.status =
+        Status(PDCM_STATUS_NOT_FOUND, "health query entity is not present");
+    return result;
+  }
+  if (*current != entity) {
+    result.status =
+        Status(PDCM_STATUS_STALE_GENERATION, "health query entity is stale");
+    return result;
+  }
+  const auto stored = health_.find(entity);
+  if (stored == health_.end()) {
+    result.status =
+        Status(PDCM_STATUS_NOT_FOUND, "health result is not present");
+    return result;
+  }
+  result.result = stored->second;
+  result.status = Status::success();
+  return result;
+}
+
+std::optional<HeartbeatCatalogState> DataManager::heartbeatCatalog() const {
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  if (!catalog_.heartbeat.has_value()) {
+    return std::nullopt;
+  }
+  return HeartbeatCatalogState{*catalog_.heartbeat,
+                               catalog_.heartbeat_supported};
 }
 
 bool DataManager::valueMatches(const MetricDescriptor &descriptor,

@@ -13,6 +13,8 @@
 namespace pdcm {
 namespace {
 
+constexpr std::uint32_t kTestHeartbeatDataId = 0xF0000004U;
+
 TargetCatalog testCatalog() {
   TargetCatalog catalog = TargetCatalog::blocked(TargetKind::kFpga);
   catalog.metrics_status = MetricsCatalogStatus::kReady;
@@ -30,6 +32,8 @@ TargetCatalog testCatalog() {
   metric.requirement = RequirementLevel::kConditional;
   metric.semantic_version = 1;
   catalog.metrics.push_back(metric);
+  catalog.health.front().provider_data_id = kTestHeartbeatDataId;
+  catalog.health.front().freshness_ns = 100;
   return catalog;
 }
 
@@ -49,6 +53,9 @@ ProviderDescriptor providerDescriptor(const bool present = true) {
     entity.manageable = true;
     descriptor.entities.push_back(std::move(entity));
   }
+  descriptor.capabilities.push_back(
+      ProviderCapability{ProviderDataKind::kHeartbeatEvidence,
+                         kTestHeartbeatDataId, true, "TEST_SUPPORTED"});
   return descriptor;
 }
 
@@ -101,6 +108,43 @@ Observation failedObservation(const EntityRef entity, const std::int64_t time,
   observation.error.native_code = 77;
   observation.error.retryable = true;
   return observation;
+}
+
+FirmwareHeartbeatEvidence heartbeatEvidence(
+    const EntityRef entity, const std::uint64_t token,
+    const std::int64_t observed_time,
+    const HeartbeatNativeClass native_class = HeartbeatNativeClass::kNormal) {
+  FirmwareHeartbeatEvidence evidence;
+  evidence.entity = entity;
+  evidence.provider_data_id = kTestHeartbeatDataId;
+  evidence.native_class = native_class;
+  evidence.status = ObservationStatus::kValid;
+  evidence.sequence_or_token = token;
+  evidence.source_sample_time_ns = observed_time;
+  evidence.observed_monotonic_time_ns = observed_time;
+  evidence.source.provider = "mock-provider";
+  evidence.source.native_source = "mock-heartbeat";
+  evidence.catalog_generation = 1;
+  return evidence;
+}
+
+HealthResult healthResult(const FirmwareHeartbeatEvidence &evidence,
+                          const HealthState state,
+                          const StableHealthCode code) {
+  HealthResult result;
+  result.entity = evidence.entity;
+  result.subsystem_id = kFirmwareHeartbeatHealthId;
+  result.state = state;
+  result.item_status = ObservationStatus::kValid;
+  result.catalog_generation = evidence.catalog_generation;
+  result.evaluated_monotonic_time_ns = evidence.observed_monotonic_time_ns;
+  result.evidence_age_ns = 0;
+  result.evidence.push_back(
+      EvidenceRef{evidence.evidence_id, evidence.sequence_or_token,
+                  evidence.source_sample_time_ns,
+                  evidence.observed_monotonic_time_ns, evidence.source});
+  result.code = code;
+  return result;
 }
 
 TEST(DataManagerTest, PreservesLatestFailureAndSynthesizesStaleValue) {
@@ -277,6 +321,152 @@ TEST(DataManagerTest, WaitForEpochHonorsDeadline) {
   ASSERT_TRUE(
       data.commit({validObservation(active.entity, 1, 10)}).status.ok());
   EXPECT_TRUE(data.waitForEpoch(1, expired).ok());
+}
+
+TEST(DataManagerTest, BoundsAndOrdersHeartbeatEvidence) {
+  ActiveCatalog active = activeCatalog();
+  DataStoreLimits limits;
+  limits.max_evidence_items = 2;
+  DataManager data(limits);
+  ASSERT_TRUE(data.activateCatalog(active.view, active.target).ok());
+
+  FirmwareHeartbeatEvidence first = heartbeatEvidence(active.entity, 1, 10);
+  const EvidenceCommitResult first_commit = data.commitHeartbeatEvidence(first);
+  ASSERT_TRUE(first_commit.status.ok());
+  EXPECT_TRUE(first_commit.committed);
+  first.evidence_id = first_commit.evidence_id;
+
+  FirmwareHeartbeatEvidence duplicate = first;
+  duplicate.evidence_id = 0;
+  const EvidenceCommitResult duplicate_commit =
+      data.commitHeartbeatEvidence(duplicate);
+  EXPECT_TRUE(duplicate_commit.status.ok());
+  EXPECT_FALSE(duplicate_commit.committed);
+  EXPECT_EQ(duplicate_commit.evidence_id, first_commit.evidence_id);
+
+  EXPECT_TRUE(
+      data.commitHeartbeatEvidence(heartbeatEvidence(active.entity, 2, 20))
+          .status.ok());
+  EXPECT_TRUE(
+      data.commitHeartbeatEvidence(heartbeatEvidence(active.entity, 3, 30))
+          .status.ok());
+  EXPECT_EQ(data.heartbeatEvidence(first_commit.evidence_id).status.code(),
+            PDCM_STATUS_NOT_FOUND);
+
+  EXPECT_EQ(
+      data.commitHeartbeatEvidence(heartbeatEvidence(active.entity, 2, 40))
+          .status.code(),
+      PDCM_STATUS_STALE_GENERATION);
+  const EvidenceReadResult latest =
+      data.latestHeartbeatEvidence(active.entity, active.view->generation());
+  ASSERT_TRUE(latest.status.ok());
+  ASSERT_TRUE(latest.evidence.has_value());
+  EXPECT_EQ(latest.evidence->sequence_or_token, 3);
+}
+
+TEST(DataManagerTest, PublishesHealthEventOnlyForStateChanges) {
+  ActiveCatalog active = activeCatalog();
+  DataManager data;
+  ASSERT_TRUE(data.activateCatalog(active.view, active.target).ok());
+  const std::uint64_t catalog_event_count = data.eventCount();
+
+  FirmwareHeartbeatEvidence evidence = heartbeatEvidence(active.entity, 1, 10);
+  const EvidenceCommitResult evidence_commit =
+      data.commitHeartbeatEvidence(evidence);
+  ASSERT_TRUE(evidence_commit.status.ok());
+  evidence.evidence_id = evidence_commit.evidence_id;
+
+  const HealthCommitResult healthy = data.commitHealth(healthResult(
+      evidence, HealthState::kHealthy, StableHealthCode::kHeartbeatOk));
+  ASSERT_TRUE(healthy.status.ok());
+  EXPECT_TRUE(healthy.state_changed);
+  EXPECT_EQ(data.eventCount(), catalog_event_count + 1);
+
+  HealthResult refreshed = healthResult(evidence, HealthState::kHealthy,
+                                        StableHealthCode::kHeartbeatOk);
+  refreshed.evaluated_monotonic_time_ns = 11;
+  const HealthCommitResult same_state = data.commitHealth(refreshed);
+  ASSERT_TRUE(same_state.status.ok());
+  EXPECT_FALSE(same_state.state_changed);
+  EXPECT_EQ(data.eventCount(), catalog_event_count + 1);
+
+  const HealthCommitResult warning = data.commitHealth(healthResult(
+      evidence, HealthState::kWarning, StableHealthCode::kHeartbeatWarning));
+  ASSERT_TRUE(warning.status.ok());
+  EXPECT_TRUE(warning.state_changed);
+  EXPECT_EQ(data.eventCount(), catalog_event_count + 2);
+
+  const HealthReadResult stored =
+      data.readHealth(active.entity, active.view->generation());
+  ASSERT_TRUE(stored.status.ok());
+  ASSERT_TRUE(stored.result.has_value());
+  EXPECT_EQ(stored.result->state, HealthState::kWarning);
+
+  const EventSnapshot events = data.eventsSince(0);
+  ASSERT_FALSE(events.events.empty());
+  const PdcmEvent &last = *events.events.back();
+  EXPECT_EQ(last.type, EventType::kFirmwareHeartbeatHealthChanged);
+  ASSERT_TRUE(std::holds_alternative<HealthChangePayload>(last.payload));
+  const HealthChangePayload payload =
+      std::get<HealthChangePayload>(last.payload);
+  EXPECT_EQ(payload.previous_state, HealthState::kHealthy);
+  EXPECT_EQ(payload.state, HealthState::kWarning);
+  ASSERT_EQ(payload.evidence.size(), 1);
+  EXPECT_EQ(payload.evidence.front().evidence_id, evidence_commit.evidence_id);
+}
+
+TEST(DataManagerTest, EnforcesEvidenceAndHealthByteLimits) {
+  ActiveCatalog active = activeCatalog();
+
+  DataStoreLimits evidence_limits;
+  evidence_limits.max_evidence_bytes = sizeof(FirmwareHeartbeatEvidence);
+  DataManager evidence_constrained(evidence_limits);
+  ASSERT_TRUE(
+      evidence_constrained.activateCatalog(active.view, active.target).ok());
+  EXPECT_EQ(
+      evidence_constrained
+          .commitHeartbeatEvidence(heartbeatEvidence(active.entity, 1, 10))
+          .status.code(),
+      PDCM_STATUS_RESOURCE_EXHAUSTED);
+
+  DataStoreLimits health_limits;
+  health_limits.max_health_bytes = sizeof(HealthResult);
+  DataManager health_constrained(health_limits);
+  ASSERT_TRUE(
+      health_constrained.activateCatalog(active.view, active.target).ok());
+  FirmwareHeartbeatEvidence evidence = heartbeatEvidence(active.entity, 1, 10);
+  const EvidenceCommitResult committed =
+      health_constrained.commitHeartbeatEvidence(evidence);
+  ASSERT_TRUE(committed.status.ok());
+  evidence.evidence_id = committed.evidence_id;
+  EXPECT_EQ(health_constrained
+                .commitHealth(healthResult(evidence, HealthState::kHealthy,
+                                           StableHealthCode::kHeartbeatOk))
+                .status.code(),
+            PDCM_STATUS_RESOURCE_EXHAUSTED);
+}
+
+TEST(DataManagerTest, ClearsEvidenceAndHealthOnCatalogGenerationChange) {
+  ActiveCatalog active = activeCatalog();
+  DataManager data;
+  ASSERT_TRUE(data.activateCatalog(active.view, active.target).ok());
+
+  FirmwareHeartbeatEvidence evidence = heartbeatEvidence(active.entity, 1, 10);
+  const EvidenceCommitResult evidence_commit =
+      data.commitHeartbeatEvidence(evidence);
+  ASSERT_TRUE(evidence_commit.status.ok());
+  evidence.evidence_id = evidence_commit.evidence_id;
+  ASSERT_TRUE(data.commitHealth(healthResult(evidence, HealthState::kHealthy,
+                                             StableHealthCode::kHeartbeatOk))
+                  .status.ok());
+
+  ASSERT_TRUE(active.semantic->commit(providerDescriptor()).status.ok());
+  ASSERT_TRUE(
+      data.activateCatalog(active.semantic->snapshot(), active.target).ok());
+  EXPECT_EQ(data.latestHeartbeatEvidence(active.entity).status.code(),
+            PDCM_STATUS_NOT_FOUND);
+  EXPECT_EQ(data.readHealth(active.entity).status.code(),
+            PDCM_STATUS_NOT_FOUND);
 }
 
 } // namespace

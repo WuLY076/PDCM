@@ -115,6 +115,24 @@ pdcm_enable_warnings(pdcm_data)
 pdcm_enable_sanitizers(pdcm_data)
 
 add_library(
+  pdcm_metrics
+  STATIC
+    src/metrics/metrics_manager.cpp
+)
+add_library(PDCM::metrics ALIAS pdcm_metrics)
+target_include_directories(
+  pdcm_metrics
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+)
+target_link_libraries(
+  pdcm_metrics
+  PUBLIC pdcm_common pdcm_data pdcm_semantic
+)
+pdcm_enable_warnings(pdcm_metrics)
+pdcm_enable_sanitizers(pdcm_metrics)
+
+add_library(
   pdcm_collection
   STATIC
     src/collection/collection_coordinator.cpp
@@ -447,6 +465,21 @@ if(BUILD_TESTING)
   gtest_discover_tests(
     pdcm_subscription_manager_test
     TEST_PREFIX "product.subscription."
+  )
+
+  add_executable(
+    pdcm_metrics_manager_test
+    tests/unit/metrics_manager_test.cpp
+  )
+  target_link_libraries(
+    pdcm_metrics_manager_test
+    PRIVATE pdcm_metrics GTest::gtest_main
+  )
+  pdcm_enable_warnings(pdcm_metrics_manager_test)
+  pdcm_enable_sanitizers(pdcm_metrics_manager_test)
+  gtest_discover_tests(
+    pdcm_metrics_manager_test
+    TEST_PREFIX "product.metrics."
   )
 
   add_executable(
