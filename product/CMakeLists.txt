@@ -390,7 +390,7 @@ if(BUILD_TESTING)
   include(GoogleTest)
   find_program(PDCM_BASH bash REQUIRED)
 
-  add_executable(pdcm_cli_test tests/unit/cli_test.cpp)
+  add_executable(pdcm_cli_test tests/unit/cli/cli_test.cpp)
   add_test(NAME product.daemon.help COMMAND pdcm_daemon --help)
   add_test(
     NAME product.daemon.config_check
@@ -404,7 +404,7 @@ if(BUILD_TESTING)
   set_tests_properties(product.daemon.config_check
                        PROPERTIES LABELS "tdd-01,ac-1,ac-8")
 
-  add_executable(pdcm_daemon_config_test tests/unit/daemon_config_test.cpp)
+  add_executable(pdcm_daemon_config_test tests/unit/daemon/daemon_config_test.cpp)
   target_link_libraries(
     pdcm_daemon_config_test
     PRIVATE pdcm_daemon_config GTest::gtest_main
@@ -417,7 +417,7 @@ if(BUILD_TESTING)
     PROPERTIES LABELS "tdd-01,ac-1,ac-8"
   )
 
-  add_executable(pdcm_daemon_lifecycle_test tests/unit/daemon_lifecycle_test.cpp)
+  add_executable(pdcm_daemon_lifecycle_test tests/integration/daemon_lifecycle_test.cpp)
   target_compile_definitions(
     pdcm_daemon_lifecycle_test
     PRIVATE PDCM_DAEMON_PATH="$<TARGET_FILE:pdcm_daemon>"
@@ -448,7 +448,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_public_headers_c_test
-    tests/unit/public_headers_c_test.c
+    tests/contract/public_headers_c_test.c
   )
   target_include_directories(
     pdcm_public_headers_c_test
@@ -461,7 +461,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_public_api_test
-    tests/unit/public_api_test.cpp
+    tests/contract/public_api_test.cpp
   )
   target_link_libraries(
     pdcm_public_api_test
@@ -482,7 +482,7 @@ if(BUILD_TESTING)
         ${CMAKE_COMMAND}
         "-DPDCM_NM=${CMAKE_NM}"
         "-DPDCM_LIBRARY=$<TARGET_FILE:pdcm>"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_public_symbols.cmake"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/contract/check_public_symbols.cmake"
     )
     set_tests_properties(
       product.public_symbols
@@ -497,7 +497,7 @@ if(BUILD_TESTING)
       "-DPDCM_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
       "-DPDCM_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}"
       "-DPDCM_READELF=${CMAKE_READELF}"
-      -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_install_tree.cmake"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/install/check_install_tree.cmake"
   )
   set_tests_properties(
     product.install_tree PROPERTIES RUN_SERIAL TRUE
@@ -518,7 +518,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_foundation_test
-    tests/unit/foundation_test.cpp
+    tests/unit/common/foundation_test.cpp
   )
   target_include_directories(
     pdcm_foundation_test
@@ -538,7 +538,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_semantic_catalog_test
-    tests/unit/semantic_catalog_test.cpp
+    tests/unit/semantic/semantic_catalog_test.cpp
   )
   target_link_libraries(
     pdcm_semantic_catalog_test
@@ -554,7 +554,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_runtime_config_test
-    tests/unit/runtime_config_test.cpp
+    tests/unit/core/runtime_config_test.cpp
   )
   target_link_libraries(
     pdcm_runtime_config_test
@@ -570,7 +570,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_frame_test
-    tests/unit/frame_test.cpp
+    tests/unit/ipc/frame_test.cpp
   )
   target_link_libraries(
     pdcm_frame_test
@@ -586,7 +586,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_unix_socket_test
-    tests/unit/unix_socket_test.cpp
+    tests/integration/unix_socket_test.cpp
   )
   target_link_libraries(
     pdcm_unix_socket_test
@@ -602,7 +602,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_session_handshake_test
-    tests/unit/session_handshake_test.cpp
+    tests/unit/ipc/session_handshake_test.cpp
   )
   target_link_libraries(
     pdcm_session_handshake_test
@@ -618,7 +618,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_data_manager_test
-    tests/unit/data_manager_test.cpp
+    tests/unit/data/data_manager_test.cpp
   )
   target_link_libraries(
     pdcm_data_manager_test
@@ -634,7 +634,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_query_engine_test
-    tests/unit/query_engine_test.cpp
+    tests/unit/data/query_engine_test.cpp
   )
   target_link_libraries(
     pdcm_query_engine_test
@@ -650,7 +650,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_subscription_manager_test
-    tests/unit/subscription_manager_test.cpp
+    tests/unit/data/subscription_manager_test.cpp
   )
   target_link_libraries(
     pdcm_subscription_manager_test
@@ -666,7 +666,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_processor_test
-    tests/unit/processor_test.cpp
+    tests/unit/metrics/processor_test.cpp
   )
   target_link_libraries(
     pdcm_processor_test
@@ -682,7 +682,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_metrics_manager_test
-    tests/unit/metrics_manager_test.cpp
+    tests/unit/metrics/metrics_manager_test.cpp
   )
   target_link_libraries(
     pdcm_metrics_manager_test
@@ -698,7 +698,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_watch_manager_test
-    tests/unit/watch_manager_test.cpp
+    tests/unit/collection/watch_manager_test.cpp
   )
   target_link_libraries(
     pdcm_watch_manager_test
@@ -714,7 +714,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_collection_coordinator_test
-    tests/unit/collection_coordinator_test.cpp
+    tests/unit/collection/collection_coordinator_test.cpp
   )
   target_link_libraries(
     pdcm_collection_coordinator_test

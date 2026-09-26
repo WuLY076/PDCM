@@ -29,7 +29,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_mock_provider_test
-    tests/mock_provider_test.cpp
+    tests/unit/mock_provider_test.cpp
   )
   target_link_libraries(
     pdcm_mock_provider_test
@@ -45,7 +45,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_data_roundtrip_test
-    tests/data_roundtrip_test.cpp
+    tests/component/data_roundtrip_test.cpp
   )
   target_link_libraries(
     pdcm_data_roundtrip_test
@@ -61,7 +61,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_collection_roundtrip_test
-    tests/collection_roundtrip_test.cpp
+    tests/component/collection_roundtrip_test.cpp
   )
   target_link_libraries(
     pdcm_collection_roundtrip_test
@@ -77,7 +77,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_health_roundtrip_test
-    tests/health_roundtrip_test.cpp
+    tests/component/health_roundtrip_test.cpp
   )
   target_link_libraries(
     pdcm_health_roundtrip_test
@@ -93,7 +93,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_core_lifecycle_test
-    tests/core_lifecycle_test.cpp
+    tests/component/core_lifecycle_test.cpp
   )
   target_link_libraries(
     pdcm_core_lifecycle_test
@@ -109,7 +109,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_embedded_backend_test
-    tests/embedded_backend_test.cpp
+    tests/component/embedded_backend_test.cpp
   )
   target_link_libraries(
     pdcm_embedded_backend_test
@@ -125,7 +125,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_mock_daemon_fixture
-    src/mock_daemon_fixture.cpp
+    fixtures/mock_daemon_main.cpp
   )
   target_link_libraries(
     pdcm_mock_daemon_fixture
@@ -136,7 +136,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_standalone_roundtrip_test
-    tests/standalone_roundtrip_test.cpp
+    tests/e2e/standalone_roundtrip_test.cpp
   )
   add_dependencies(
     pdcm_standalone_roundtrip_test
@@ -161,7 +161,7 @@ if(BUILD_TESTING)
 
   add_executable(
     pdcm_cli_roundtrip_test
-    tests/cli_roundtrip_test.cpp
+    tests/e2e/cli_roundtrip_test.cpp
   )
   add_dependencies(
     pdcm_cli_roundtrip_test
