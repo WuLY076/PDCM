@@ -16,6 +16,18 @@ MockProvider while the external PDRL contract remains blocked.
 - `docs/` contains the RFC and TDD suite.
 - `sync/` documents and validates the export policy.
 
+## Repository layout
+
+- `product/include/` contains the public ABI, while `product/src/` contains
+  internal libraries.
+- `product/apps/` contains executable entry points and `product/tests/`
+  contains product verification.
+- `testkit/tests/` is grouped into unit, component, and end-to-end suites.
+- `docs/architecture/` contains the RFC and `docs/tdd/` contains design
+  specifications.
+- `tools/ci/` contains workspace gates and `tools/sync/` contains export
+  checks.
+
 Production code must build independently from the testkit:
 
 ```sh
@@ -35,13 +47,13 @@ ctest --test-dir build --output-on-failure
 Validate the future GitLab boundary with:
 
 ```sh
-tools/verify-sync-boundary.sh
+tools/sync/verify-sync-boundary.sh
 ```
 
 Run the complete TDD-10 gate with:
 
 ```sh
-tools/run-release-gate.sh
+tools/ci/run-release-gate.sh
 ```
 
 The command runs the normal workspace tests, ASAN/UBSAN tests, and the

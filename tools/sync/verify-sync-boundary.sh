@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 build_root="$(mktemp -d)"
 trap 'rm -rf "${build_root}"' EXIT
 
@@ -16,7 +16,7 @@ cmake -S "${repo_root}/product" -B "${build_root}/product" -G Ninja \
 cmake --build "${build_root}/product"
 ctest --test-dir "${build_root}/product" --output-on-failure
 
-if readelf -d "${build_root}/product/libpdcm.so" | rg -i 'libpdrl'; then
+if readelf -d "${build_root}/product/src/client/libpdcm.so" | rg -i 'libpdrl'; then
   echo "libpdcm.so has a forbidden libpdrl.so dynamic dependency" >&2
   exit 1
 fi

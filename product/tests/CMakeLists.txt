@@ -123,7 +123,7 @@
   add_test(
     NAME product.release_contract
     COMMAND "${PDCM_BASH}"
-            "${PDCM_PRODUCT_SOURCE_DIR}/tools/verify-release-contract.sh"
+            "${PDCM_PRODUCT_SOURCE_DIR}/tools/release/verify-release-contract.sh"
   )
   set_tests_properties(product.release_contract
                        PROPERTIES LABELS "tdd-10,ac-1,ac-2,ac-3,ac-4,ac-5,ac-6,ac-7,ac-8,ac-9,ac-10,ac-11")

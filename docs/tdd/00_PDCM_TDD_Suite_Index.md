@@ -105,15 +105,15 @@ src/metrics/                  # MetricsManager、processors、heartbeat health
 src/operation/                # Post-P0 reserved；P0 不注册 executor
 src/provider/                 # Provider Contract 与 ProviderManager
 src/provider/pdrl/            # 唯一允许接触 PDRL 的目录
-src/daemon/
-src/cli/
-proto/local/
+apps/daemon/
+apps/cli/
+proto/local/v1/
 catalog/                      # schema；P0 Metric Catalog 待冻结
 tests/unit/
 tests/contract/
 tests/integration/
 tests/robustness/
-packaging/
+config/
 docs/release/
 ~~~
 

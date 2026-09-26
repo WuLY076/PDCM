@@ -29,7 +29,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtest-dev ninja-build protobuf-compiler ripgrep
       - name: Verify standalone product tree
-        run: tools/verify-sync-boundary.sh
+        run: tools/sync/verify-sync-boundary.sh
 
   sanitizers:
     runs-on: ubuntu-latest
@@ -59,7 +59,7 @@ jobs:
           PDCM_GATE_SANITIZER_TESTS: PASS (ASAN/UBSAN job)
           PDCM_GATE_PRODUCT_BOUNDARY: PASS (product-boundary job)
         run: >-
-          product/tools/verify-release-contract.sh
+          product/tools/release/verify-release-contract.sh
           --report build/PDCM_P0_RELEASE_GATE.md
       - name: Upload release report
         uses: actions/upload-artifact@v4
