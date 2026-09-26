@@ -279,31 +279,31 @@ endif()
 pdcm_enable_warnings(pdcm)
 pdcm_enable_sanitizers(pdcm)
 
-add_library(pdcm_cli_core STATIC src/cli/cli.cpp)
+add_library(pdcm_cli_core STATIC apps/cli/cli.cpp)
 target_include_directories(
   pdcm_cli_core
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/apps>"
 )
 target_link_libraries(pdcm_cli_core PUBLIC PDCM::pdcm)
 pdcm_enable_warnings(pdcm_cli_core)
 pdcm_enable_sanitizers(pdcm_cli_core)
 
-add_executable(pdcm_cli src/cli/main.cpp)
+add_executable(pdcm_cli apps/cli/main.cpp)
 set_target_properties(pdcm_cli PROPERTIES OUTPUT_NAME pdcm-cli)
 target_link_libraries(pdcm_cli PRIVATE pdcm_cli_core)
 pdcm_enable_warnings(pdcm_cli)
 pdcm_enable_sanitizers(pdcm_cli)
 
-add_library(pdcm_daemon_config STATIC src/daemon/daemon_config.cpp)
+add_library(pdcm_daemon_config STATIC apps/daemon/daemon_config.cpp)
 target_include_directories(
   pdcm_daemon_config
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/apps>"
 )
 target_link_libraries(pdcm_daemon_config PUBLIC PDCM::core)
 pdcm_enable_warnings(pdcm_daemon_config)
 pdcm_enable_sanitizers(pdcm_daemon_config)
 
-add_executable(pdcm_daemon src/daemon/main.cpp)
+add_executable(pdcm_daemon apps/daemon/main.cpp)
 set_target_properties(pdcm_daemon PROPERTIES OUTPUT_NAME pdcm-daemon)
 target_link_libraries(
   pdcm_daemon
@@ -333,12 +333,12 @@ install(
 )
 
 install(
-  FILES packaging/pdcm.conf
+  FILES config/pdcm.conf
   DESTINATION "/etc/pdcm"
   PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ
 )
 install(
-  FILES packaging/pdcm.service
+  FILES config/systemd/pdcm.service
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/systemd/system"
 )
 
@@ -395,7 +395,7 @@ if(BUILD_TESTING)
   add_test(
     NAME product.daemon.config_check
     COMMAND pdcm_daemon --config
-            "${CMAKE_CURRENT_SOURCE_DIR}/packaging/pdcm.conf" --check-config
+            "${CMAKE_CURRENT_SOURCE_DIR}/config/pdcm.conf" --check-config
   )
   set_tests_properties(
     product.daemon.help
