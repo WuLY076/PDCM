@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-#include "proto/local/pdcm_local.pb.h"
+#include "pdcm_local.pb.h"
 
 namespace pdcm::ipc {
 namespace {
