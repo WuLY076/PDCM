@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 build_root="${repo_root}/build/release-gate"
 report_path=""
 
@@ -50,8 +50,8 @@ sanitizer_count="$(ctest --test-dir "${build_root}/sanitizers" -N |
   awk '/Total Tests:/ {print $3}')"
 sanitizer_tests="${sanitizer_count}/${sanitizer_count} passed (ASAN/UBSAN)"
 
-"${repo_root}/tools/verify-sync-boundary.sh"
+"${repo_root}/tools/sync/verify-sync-boundary.sh"
 
-env PDCM_GATE_WORKSPACE_TESTS="${workspace_tests}" PDCM_GATE_SANITIZER_TESTS="${sanitizer_tests}" PDCM_GATE_PRODUCT_BOUNDARY="PASS" "${repo_root}/product/tools/verify-release-contract.sh" --report "${report_path}"
+env PDCM_GATE_WORKSPACE_TESTS="${workspace_tests}" PDCM_GATE_SANITIZER_TESTS="${sanitizer_tests}" PDCM_GATE_PRODUCT_BOUNDARY="PASS" "${repo_root}/product/tools/release/verify-release-contract.sh" --report "${report_path}"
 
 echo "release gate report: ${report_path}"

@@ -6,8 +6,8 @@ include:
   - product/**
 
 optional:
-  - docs/RFC.md
-  - docs/TDDs/**
+  - docs/architecture/RFC.md
+  - docs/tdd/**
 
 exclude:
   - testkit/**

@@ -11,7 +11,7 @@
 #include <unistd.h>
 
 #include "ipc/frame.hpp"
-#include "proto/local/pdcm_local.pb.h"
+#include "pdcm_local.pb.h"
 #include "pdcm/types.h"
 
 namespace pdcm {

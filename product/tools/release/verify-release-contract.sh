@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-product_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+product_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 release_manifest="${product_root}/verification/p0-release-status.tsv"
 loader_manifest="${product_root}/verification/provider-loader-status.tsv"
 report_path=""

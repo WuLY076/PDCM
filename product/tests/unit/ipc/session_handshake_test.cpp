@@ -5,7 +5,7 @@
 
 #include "core/session_manager.hpp"
 #include "ipc/handshake.hpp"
-#include "proto/local/pdcm_local.pb.h"
+#include "pdcm_local.pb.h"
 
 namespace pdcm {
 namespace {

@@ -1,0 +1,23 @@
+add_library(
+  pdcm_collection
+  STATIC
+    collection_coordinator.cpp
+    watch_manager.cpp
+)
+add_library(PDCM::collection ALIAS pdcm_collection)
+target_include_directories(
+  pdcm_collection
+  PUBLIC
+    "$<BUILD_INTERFACE:${PDCM_PRODUCT_SOURCE_DIR}/src>"
+)
+target_link_libraries(
+  pdcm_collection
+  PUBLIC
+    pdcm_common
+    pdcm_provider_runtime
+    pdcm_semantic
+    pdcm_data
+    pdcm_metrics
+)
+pdcm_enable_warnings(pdcm_collection)
+pdcm_enable_sanitizers(pdcm_collection)

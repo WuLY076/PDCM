@@ -9,4 +9,4 @@ archive from it.
 test files; that approach is intentionally unsupported because it can leak
 MockProvider code or test catalogs.
 
-Before exporting, run `tools/verify-sync-boundary.sh`.
+Before exporting, run `tools/sync/verify-sync-boundary.sh`.
